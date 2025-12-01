@@ -446,9 +446,16 @@ const App = () => {
     const [user, setUser] = useState<any | null>(null);
     const isAuthenticated = !!user;
 
-    const [view, setView] = useState<'list' | 'add' | 'stats' | 'settings' | 'auth'>('list'); 
+    const [view, setView] = useState<'list' | 'add' | 'stats' | 'settings' | 'auth'>('list');
     const [filterMonth, setFilterMonth] = useState(new Date().getMonth());
     const [filterYear, setFilterYear] = useState(new Date().getFullYear());
+
+    // List view filtering and infinite scroll states
+    const [visibleCount, setVisibleCount] = useState(30);
+    const [selectedMonths, setSelectedMonths] = useState<string[]>([`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`]);
+    const [filterMode, setFilterMode] = useState<'current' | 'selected' | 'custom' | 'all'>('all');
+    const [customStartDate, setCustomStartDate] = useState('');
+    const [customEndDate, setCustomEndDate] = useState('');
 
     const [form, setForm] = useState<FormState>({
         amount: '',
@@ -461,6 +468,39 @@ const App = () => {
     const allExpenses = useMemo(() => {
         return [...expenses, ...pendingExpenses].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
     }, [expenses, pendingExpenses]);
+
+    // Filtered expenses for list view
+    const listViewExpenses = useMemo(() => {
+        let filtered = [...allExpenses];
+
+        if (filterMode === 'current') {
+            // Current month only
+            const now = new Date();
+            filtered = filtered.filter(expense => {
+                const expenseDate = expense.timestamp;
+                return expenseDate.getMonth() === now.getMonth() && expenseDate.getFullYear() === now.getFullYear();
+            });
+        } else if (filterMode === 'selected' && selectedMonths.length > 0) {
+            // Selected months
+            filtered = filtered.filter(expense => {
+                const expenseDate = expense.timestamp;
+                const monthKey = `${expenseDate.getFullYear()}-${String(expenseDate.getMonth() + 1).padStart(2, '0')}`;
+                return selectedMonths.includes(monthKey);
+            });
+        } else if (filterMode === 'custom' && customStartDate && customEndDate) {
+            // Custom date range
+            const startDate = new Date(customStartDate);
+            const endDate = new Date(customEndDate);
+            endDate.setHours(23, 59, 59, 999); // End of day
+            filtered = filtered.filter(expense => {
+                const expenseDate = expense.timestamp;
+                return expenseDate >= startDate && expenseDate <= endDate;
+            });
+        }
+        // If filterMode is 'all', return all expenses
+
+        return filtered;
+    }, [allExpenses, filterMode, selectedMonths, customStartDate, customEndDate]);
 
     // Use refs to track the latest expenses and pendingExpenses for sync operations
     const expensesRef = React.useRef<Expense[]>(expenses);
@@ -833,108 +873,246 @@ const App = () => {
 
     const currentFilterDate = new Date(filterYear, filterMonth);
     const filterDateString = currentFilterDate.toLocaleString('en-US', { month: 'long', year: 'numeric' });
-    
+
+    // Generate available months from all expenses (moved outside of ListView to avoid hook issues)
+    const availableMonths = useMemo(() => {
+        const monthsSet = new Set<string>();
+        allExpenses.forEach(expense => {
+            const date = expense.timestamp;
+            const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+            monthsSet.add(monthKey);
+        });
+        return Array.from(monthsSet).sort().reverse();
+    }, [allExpenses]);
+
+    const toggleMonthSelection = (monthKey: string) => {
+        setSelectedMonths(prev =>
+            prev.includes(monthKey)
+                ? prev.filter(m => m !== monthKey)
+                : [...prev, monthKey]
+        );
+    };
+
     // --- Components ---
 
-    const ListView = () => (
-        <div className="p-4 bg-white rounded-xl shadow-lg">
-            <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold text-gray-800 flex items-center">
-                    <DollarSign className="w-5 h-5 mr-2 text-indigo-500" />
-                    All Transactions
-                </h2 >
-                {/* Network Status Indicator */}
-                <div className={`flex items-center text-sm font-medium p-2 rounded-full ${isOnline ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                    {isOnline ? (
-                        <>
-                            <Cloud className="w-4 h-4 mr-1" />
-                            Online
-                            {pendingExpenses.length > 0 && <span className="ml-2 font-bold">{`(${pendingExpenses.length} Pending)`}</span>}
-                        </>
-                    ) : (
-                        <>
-                            <CloudOff className="w-4 h-4 mr-1" />
-                            Offline
-                        </>
+    const ListView = () => {
+        const visibleExpenses = listViewExpenses.slice(0, visibleCount);
+        const hasMore = visibleCount < listViewExpenses.length;
+
+        const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+            const target = e.target as HTMLDivElement;
+            const bottom = target.scrollHeight - target.scrollTop <= target.clientHeight + 50;
+            if (bottom && hasMore) {
+                setVisibleCount(prev => prev + 30);
+            }
+        };
+
+        return (
+            <div className="p-4 bg-white rounded-xl shadow-lg">
+                <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-2xl font-bold text-gray-800 flex items-center">
+                        <DollarSign className="w-5 h-5 mr-2 text-indigo-500" />
+                        Transactions
+                    </h2>
+                    {/* Network Status Indicator */}
+                    <div className={`flex items-center text-sm font-medium p-2 rounded-full ${isOnline ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                        {isOnline ? (
+                            <>
+                                <Cloud className="w-4 h-4 mr-1" />
+                                Online
+                                {pendingExpenses.length > 0 && <span className="ml-2 font-bold">{`(${pendingExpenses.length} Pending)`}</span>}
+                            </>
+                        ) : (
+                            <>
+                                <CloudOff className="w-4 h-4 mr-1" />
+                                Offline
+                            </>
+                        )}
+                    </div>
+                </div>
+
+                {/* Filter Controls */}
+                <div className="mb-4 space-y-3 p-3 bg-gray-50 rounded-lg">
+                    <div className="flex gap-2 flex-wrap">
+                         <button
+                            onClick={() => { setFilterMode('all'); setVisibleCount(30); }}
+                            className={`px-3 py-1.5 text-xs font-medium rounded-lg transition ${filterMode === 'all' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-700 hover:bg-indigo-50'}`}
+                        >
+                            All Time
+                        </button>
+                        <button
+                            onClick={() => { setFilterMode('current'); setVisibleCount(30); }}
+                            className={`px-3 py-1.5 text-xs font-medium rounded-lg transition ${filterMode === 'current' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-700 hover:bg-indigo-50'}`}
+                        >
+                            Current Month
+                        </button>
+                        <button
+                            onClick={() => { setFilterMode('selected'); setVisibleCount(30); }}
+                            className={`px-3 py-1.5 text-xs font-medium rounded-lg transition ${filterMode === 'selected' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-700 hover:bg-indigo-50'}`}
+                        >
+                            Select Months
+                        </button>
+                        <button
+                            onClick={() => { setFilterMode('custom'); setVisibleCount(30); }}
+                            className={`px-3 py-1.5 text-xs font-medium rounded-lg transition ${filterMode === 'custom' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-700 hover:bg-indigo-50'}`}
+                        >
+                            Custom Range
+                        </button>
+                       
+                    </div>
+
+                    {/* Month Selection */}
+                    {filterMode === 'selected' && (
+                        <div className="pt-2 border-t border-gray-200">
+                            <p className="text-xs text-gray-600 mb-2">Select months to view:</p>
+                            <div className="flex gap-2 flex-wrap max-h-32 overflow-y-auto">
+                                {availableMonths.map(monthKey => {
+                                    const [year, month] = monthKey.split('-');
+                                    const monthName = new Date(parseInt(year), parseInt(month) - 1).toLocaleString('en-US', { month: 'short', year: 'numeric' });
+                                    return (
+                                        <button
+                                            key={monthKey}
+                                            onClick={() => toggleMonthSelection(monthKey)}
+                                            className={`px-2 py-1 text-xs font-medium rounded transition ${selectedMonths.includes(monthKey) ? 'bg-indigo-600 text-white' : 'bg-white text-gray-700 hover:bg-indigo-50'}`}
+                                        >
+                                            {monthName}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Custom Date Range */}
+                    {filterMode === 'custom' && (
+                        <div className="pt-2 border-t border-gray-200 grid grid-cols-2 gap-2">
+                            <div>
+                                <label className="block text-xs text-gray-600 mb-1">Start Date</label>
+                                <input
+                                    type="date"
+                                    value={customStartDate}
+                                    onChange={(e) => setCustomStartDate(e.target.value)}
+                                    className="w-full p-1.5 text-xs border border-gray-300 rounded focus:ring-indigo-500 focus:border-indigo-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs text-gray-600 mb-1">End Date</label>
+                                <input
+                                    type="date"
+                                    value={customEndDate}
+                                    onChange={(e) => setCustomEndDate(e.target.value)}
+                                    className="w-full p-1.5 text-xs border border-gray-300 rounded focus:ring-indigo-500 focus:border-indigo-500"
+                                />
+                            </div>
+                        </div>
                     )}
                 </div>
+
+                {/* Transaction Count */}
+                <div className="mb-3 text-sm text-gray-600">
+                    Showing {visibleExpenses.length} of {listViewExpenses.length} transactions
+                </div>
+
+                {loading && isAuthenticated ? (
+                    <div className="text-center py-8 text-gray-500">Loading cloud expenses...</div>
+                ) : listViewExpenses.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500 border border-dashed rounded-lg">
+                        <HardDrive className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                        No expenses found for the selected filter.
+                    </div>
+                ) : (
+                    <div
+                        className="space-y-3"
+                        style={{maxHeight: "50vh", overflowY: "auto"}}
+                        onScroll={handleScroll}
+                    >
+                        {visibleExpenses.map(expense => (
+                            <ExpenseItem key={expense.id} showDate={true} expense={expense} onDelete={handleDeleteExpense} currency={currency} isOnline={isOnline} />
+                        ))}
+                        {hasMore && (
+                            <div className="text-center py-4 text-sm text-gray-500">
+                                Scroll for more...
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
-            
-            {loading && isAuthenticated ? (
-                <div className="text-center py-8 text-gray-500">Loading cloud expenses...</div>
-            ) : allExpenses.length === 0 ? (
-                <div className="text-center py-8 text-gray-500 border border-dashed rounded-lg">
-                    <HardDrive className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-                    No expenses recorded yet. Tap '+' to add your first transaction!
-                </div>
-            ) : (
-                <div className="space-y-3">
-                    {allExpenses.map(expense => (
-                        <ExpenseItem key={expense.id} expense={expense} onDelete={handleDeleteExpense} currency={currency} isOnline={isOnline} />
-                    ))}
-                </div>
-            )}
-        </div>
-    );
+        );
+    };
 
     
     
-    const StatsView = () => (
-        <div className="p-4 bg-white rounded-xl shadow-lg">
-            <h2 className="text-2xl font-bold mb-6 text-gray-800 flex items-center">
-                <Calendar className="w-5 h-5 mr-2 text-green-500" />
-                Financial Overview ({filterYear})
-            </h2>
-            
-            {/* Annual Summary */}
-            <div className="mb-8 border border-gray-200 rounded-xl p-4 bg-gray-50">
-                <h3 className="text-xl font-semibold mb-3 text-gray-700">Yearly Snapshot</h3>
-                <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-3">
-                    {annualTotals.map((data, index) => (
-                        <div key={index} className="p-2 text-center bg-white rounded-lg shadow-sm border border-indigo-100">
-                            <div className="text-xs font-medium text-indigo-600">{data.monthName}</div>
-                            <div className="text-sm font-bold text-gray-900">{formatAmount(data.total, currency)}</div>
-                            <div className="text-xs text-gray-500">{data.count} items</div>
-                        </div>
-                    ))}
-                </div>
-                <p className="mt-4 text-sm text-gray-600">
-                    Year Total Expense: 
-                    <span className="font-bold text-indigo-600 ml-1">
-                        {formatAmount(annualTotals.reduce((sum, m) => sum + m.total, 0), currency)}
-                    </span>
-                </p>
-            </div>
+    const StatsView = () => {
+        const handleMonthClick = (monthIndex: number) => {
+            const monthKey = `${filterYear}-${String(monthIndex + 1).padStart(2, '0')}`;
+            setSelectedMonths([monthKey]);
+            setFilterMode('selected');
+            setVisibleCount(30);
+            setView('list');
+        };
 
-            {/* Monthly Filter and Total */}
-            <div className="flex justify-between items-center mb-6 p-3 bg-indigo-50 rounded-lg shadow-inner">
-                <button onClick={handlePrevMonth} className="p-2 text-indigo-700 hover:bg-indigo-200 rounded-full transition duration-150">
-                    <ArrowLeft className="w-5 h-5" />
-                </button>
-                <h3 className="lg:text-lg font-semibold text-indigo-800 flex-grow text-center">
-                    {filterDateString} Total: 
-                    <span className="font-extrabold ml-2">{formatAmount(monthlyTotal, currency)}</span>
-                </h3 >
-                <button onClick={handleNextMonth} className="p-2 text-indigo-700 hover:bg-indigo-200 rounded-full transition duration-150">
-                    <ArrowRight className="w-5 h-5" />
-                </button>
-            </div>
+        return (
+            <div className="p-4 bg-white rounded-xl shadow-lg">
+                <h2 className="text-2xl font-bold mb-6 text-gray-800 flex items-center">
+                    <Calendar className="w-5 h-5 mr-2 text-green-500" />
+                    Financial Overview ({filterYear})
+                </h2>
 
-            {/* Monthly Transaction List */}
-            <h3 className="text-xl font-semibold mb-3 text-gray-700">
-                Transactions in {filterDateString} ({filteredExpenses.length})
-            </h3 >
-            {filteredExpenses.length === 0 ? (
-                <p className="text-center text-gray-500 py-6 border border-dashed rounded-lg">No expenses recorded for this month.</p>
-            ) : (
-                <div className="space-y-3">
-                    {filteredExpenses.map((expense) => (
-                        <ExpenseItem key={expense.id} expense={expense} onDelete={handleDeleteExpense} showDate={true} currency={currency} isOnline={isOnline} />
-                    ))}
+                {/* Annual Summary */}
+                <div className="mb-8 border border-gray-200 rounded-xl p-4 bg-gray-50">
+                    <h3 className="text-xl font-semibold mb-3 text-gray-700">Yearly Snapshot</h3>
+                    <p className="text-xs text-gray-500 mb-3">Click on any month to view transactions</p>
+                    <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+                        {annualTotals.map((data, index) => (
+                            <button
+                                key={index}
+                                onClick={() => handleMonthClick(index)}
+                                className="p-2 text-center bg-white rounded-lg shadow-sm border border-indigo-100 hover:shadow-md hover:border-indigo-300 transition cursor-pointer"
+                            >
+                                <div className="text-xs font-medium text-indigo-600">{data.monthName}</div>
+                                <div className="text-sm font-bold text-gray-900">{formatAmount(data.total, currency)}</div>
+                                <div className="text-xs text-gray-500">{data.count} items</div>
+                            </button>
+                        ))}
+                    </div>
+                    <p className="mt-4 text-sm text-gray-600">
+                        Year Total Expense:
+                        <span className="font-bold text-indigo-600 ml-1">
+                            {formatAmount(annualTotals.reduce((sum, m) => sum + m.total, 0), currency)}
+                        </span>
+                    </p>
                 </div>
-            )}
-        </div >
-    );
+
+                {/* Monthly Filter and Total */}
+                <div className="flex justify-between items-center mb-6 p-3 bg-indigo-50 rounded-lg shadow-inner">
+                    <button onClick={handlePrevMonth} className="p-2 text-indigo-700 hover:bg-indigo-200 rounded-full transition duration-150">
+                        <ArrowLeft className="w-5 h-5" />
+                    </button>
+                    <h3 className="lg:text-lg font-semibold text-indigo-800 flex-grow text-center">
+                        {filterDateString} Total:
+                        <span className="font-extrabold ml-2">{formatAmount(monthlyTotal, currency)}</span>
+                    </h3>
+                    <button onClick={handleNextMonth} className="p-2 text-indigo-700 hover:bg-indigo-200 rounded-full transition duration-150">
+                        <ArrowRight className="w-5 h-5" />
+                    </button>
+                </div>
+
+                {/* Monthly Transaction List */}
+                <h3 className="text-xl font-semibold mb-3 text-gray-700">
+                    Transactions in {filterDateString} ({filteredExpenses.length})
+                </h3>
+                {filteredExpenses.length === 0 ? (
+                    <p className="text-center text-gray-500 py-6 border border-dashed rounded-lg">No expenses recorded for this month.</p>
+                ) : (
+                    <div className="space-y-3" style={{maxHeight: "50vh", overflowY: "auto"}}>
+                        {filteredExpenses.map((expense) => (
+                            <ExpenseItem key={expense.id} expense={expense} onDelete={handleDeleteExpense} showDate={true} currency={currency} isOnline={isOnline} />
+                        ))}
+                    </div>
+                )}
+            </div>
+        );
+    };
 
 
     const SettingsView = () => {
