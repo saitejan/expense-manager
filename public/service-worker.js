@@ -1,5 +1,5 @@
 // Name of the cache storage
-const CACHE_NAME = 'moneytrack-v1';
+const CACHE_NAME = 'moneytrack-v2';
 
 // Files to cache (The main build artifacts)
 const urlsToCache = [
@@ -13,24 +13,46 @@ const urlsToCache = [
 
 // Install event: cache assets
 self.addEventListener('install', (event) => {
-  self.skipWaiting();
+  console.log('[ServiceWorker] Installing new version');
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
-        console.log('Opened cache, adding app shell assets');
+        console.log('[ServiceWorker] Opened cache, adding app shell assets');
         return cache.addAll(urlsToCache);
+      })
+      .then(() => {
+        // Don't skip waiting automatically - let the app control when to update
+        console.log('[ServiceWorker] New version installed, waiting for activation');
+        // Notify all clients that an update is available
+        return self.clients.matchAll().then((clients) => {
+          clients.forEach((client) => {
+            client.postMessage({
+              type: 'UPDATE_AVAILABLE',
+              version: CACHE_NAME
+            });
+          });
+        });
       })
   );
 });
 
+// Listen for messages from the app
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    console.log('[ServiceWorker] Received SKIP_WAITING message');
+    self.skipWaiting();
+  }
+});
+
 // Activate event: clean up old caches
 self.addEventListener('activate', (event) => {
+  console.log('[ServiceWorker] Activating new version');
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
           if (cacheName !== CACHE_NAME) {
-            console.log('Deleting old cache:', cacheName);
+            console.log('[ServiceWorker] Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
           return Promise.resolve();
@@ -39,7 +61,17 @@ self.addEventListener('activate', (event) => {
     })
   );
   // Take control of uncontrolled clients immediately
-  self.clients.claim();
+  return self.clients.claim().then(() => {
+    // Notify all clients that the app has been updated
+    return self.clients.matchAll().then((clients) => {
+      clients.forEach((client) => {
+        client.postMessage({
+          type: 'APP_UPDATED',
+          version: CACHE_NAME
+        });
+      });
+    });
+  });
 });
 
 // Fetch event: Serve from cache first, then fall back to network
