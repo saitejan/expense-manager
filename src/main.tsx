@@ -22,7 +22,7 @@ const registerServiceWorker = () => {
 
 
 // Register the service worker early
-// registerServiceWorker();
+registerServiceWorker();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
