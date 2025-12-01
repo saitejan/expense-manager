@@ -15,7 +15,7 @@ const appId = typeof __app_id !== 'undefined' ? __app_id : firebaseConfig.appId;
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, doc, addDoc, onSnapshot, collection, query, deleteDoc, Timestamp, setLogLevel, getDocs, setDoc } from 'firebase/firestore';
+import { getFirestore, doc, addDoc, onSnapshot, collection, query, deleteDoc, Timestamp, setDoc } from 'firebase/firestore';
 import { 
     PlusCircle, Trash2, Calendar, DollarSign, Tag, User, Download, Settings, LogOut, ArrowLeft, ArrowRight, Save, Upload, AlertTriangle, Lock, CloudOff, Cloud, HardDrive 
 } from 'lucide-react';
@@ -195,7 +195,7 @@ const AddExpenseView: React.FC<{
     isOnline: boolean;
     setView: React.Dispatch<React.SetStateAction<'list' | 'add' | 'stats' | 'settings' | 'auth'>>;
     currency: string;
-}> = ({ form, handleFormClose, handleFormChange, handleAddExpense, loading, isAuthenticated, isOnline, setView, currency }) => {
+}> = ({ form, handleFormClose, handleFormChange, handleAddExpense, loading, isAuthenticated, isOnline, currency }) => {
     return (
         <div className="p-4 bg-white rounded-xl shadow-lg">
             <h2 className="text-2xl font-bold mb-6 text-gray-800 flex items-center">
