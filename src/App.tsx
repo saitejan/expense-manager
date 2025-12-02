@@ -2,29 +2,26 @@
 const firebaseConfig = {
   apiKey: "AIzaSyCchJ0xoRHhNC7NcuWdzmLxlbEyH3fOZA0",
   authDomain: "expense-manaeger.firebaseapp.com",
+  databaseURL: "https://expense-manaeger-default-rtdb.firebaseio.com",
   projectId: "expense-manaeger",
   storageBucket: "expense-manaeger.firebasestorage.app",
   messagingSenderId: "773230073358",
   appId: "1:773230073358:web:2cf7feee179a90c85c4e5f"
 };
 
-// __app_id may be injected at runtime; declare it for TypeScript
-declare const __app_id: string | undefined;
-const appId = typeof __app_id !== 'undefined' ? __app_id : firebaseConfig.appId;
-
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, doc, addDoc, onSnapshot, collection, query, deleteDoc, Timestamp, setDoc } from 'firebase/firestore';
-import { 
-    PlusCircle, Trash2, Calendar, DollarSign, Tag, User, Download, Settings, LogOut, ArrowLeft, ArrowRight, Save, Upload, AlertTriangle, Lock, CloudOff, Cloud, HardDrive 
+import { getDatabase, ref, push, onValue, remove, set, off } from 'firebase/database';
+import {
+    PlusCircle, Trash2, Calendar, DollarSign, Tag, User, Download, Settings, LogOut, ArrowLeft, ArrowRight, Save, Upload, AlertTriangle, Lock, CloudOff, Cloud, HardDrive, Search
 } from 'lucide-react';
 
 // --- CONSTANTS ---
 const LOCAL_STORAGE_KEY = 'moneytrack_local_expenses';
 const TAGS = ['Shopping', 'Food', 'Travel', 'Hospital', 'Wife', 'Baby', 'Me', 'Bills', 'Other'];
 const CSV_HEADERS = ['id', 'userId', 'amount', 'currency', 'description', 'tag', 'timestamp', 'dateStr', 'timeStr', 'syncStatus'];
-const USER_EXPENSES_COLLECTION_PATH = (uid: string) => `/artifacts/${appId}/users/${uid}/expenses`;
+const USER_EXPENSES_PATH = (uid: string) => `users/${uid}/expenses`;
 
 // --- TYPESCRIPT INTERFACES ---
 
@@ -38,7 +35,7 @@ interface Expense {
     timestamp: Date;
     dateStr: string;
     timeStr: string;
-    syncStatus: 'synced' | 'pending'; // New status field
+    syncStatus: 'synced' | 'pending';
 }
 
 interface FormState {
@@ -57,9 +54,10 @@ interface AnnualTotal {
 
 // --- CORE HELPER FUNCTIONS ---
 
-const timestampToDate = (timestamp: Timestamp | Date): Date => {
-    if (timestamp instanceof Timestamp) {
-        return timestamp.toDate();
+const timestampToDate = (timestamp: number | Date | string): Date => {
+    if (typeof timestamp === 'number') {
+        // Firebase Realtime Database timestamp (milliseconds)
+        return new Date(timestamp);
     }
     // Handle Date object or ISO string which was saved to local storage
     return new Date(timestamp);
@@ -457,6 +455,10 @@ const App = () => {
     const [customStartDate, setCustomStartDate] = useState('');
     const [customEndDate, setCustomEndDate] = useState('');
 
+    // Search and tag filter states for list view
+    const [searchText, setSearchText] = useState('');
+    const [selectedTags, setSelectedTags] = useState<string[]>([]);
+
     const [form, setForm] = useState<FormState>({
         amount: '',
         description: '',
@@ -499,8 +501,22 @@ const App = () => {
         }
         // If filterMode is 'all', return all expenses
 
+        // Apply search filter
+        if (searchText.trim()) {
+            filtered = filtered.filter(expense =>
+                expense.description.toLowerCase().includes(searchText.toLowerCase())
+            );
+        }
+
+        // Apply tag filter
+        if (selectedTags.length > 0) {
+            filtered = filtered.filter(expense =>
+                selectedTags.includes(expense.tag)
+            );
+        }
+
         return filtered;
-    }, [allExpenses, filterMode, selectedMonths, customStartDate, customEndDate]);
+    }, [allExpenses, filterMode, selectedMonths, customStartDate, customEndDate, searchText, selectedTags]);
 
     // Use refs to track the latest expenses and pendingExpenses for sync operations
     const expensesRef = React.useRef<Expense[]>(expenses);
@@ -570,12 +586,12 @@ const App = () => {
                 setView('auth');
                 return;
             }
-            
+
             const app = initializeApp(firebaseConfig);
-            const firestore = getFirestore(app);
+            const database = getDatabase(app);
             const firebaseAuth = getAuth(app);
 
-            setDb(firestore);
+            setDb(database);
             setAuth(firebaseAuth);
 
             const unsubscribe = onAuthStateChanged(firebaseAuth, (currentUser) => {
@@ -606,13 +622,14 @@ const App = () => {
         syncInProgressRef.current = true;
         setLoading(true);
 
-        const expenseCollectionRef = collection(db, USER_EXPENSES_COLLECTION_PATH(userId));
+        const userExpensesRef = ref(db, USER_EXPENSES_PATH(userId));
         const syncPromises = dataToSync.map(pendingExpense => {
-            // Prepare data for Firebase: remove temp ID and status, convert Date to Timestamp
+            // Prepare data for Firebase: remove temp ID and status, convert Date to timestamp (milliseconds)
             const { id, syncStatus, ...firebaseExpense } = pendingExpense;
-            return addDoc(expenseCollectionRef, {
+            const newExpenseRef = push(userExpensesRef);
+            return set(newExpenseRef, {
                 ...firebaseExpense,
-                timestamp: Timestamp.fromDate(pendingExpense.timestamp),
+                timestamp: pendingExpense.timestamp.getTime(), // Store as milliseconds
             });
         });
 
@@ -647,24 +664,31 @@ const App = () => {
         }
     }, [isOnline, isAuthenticated, db, user]);
 
-    // --- 2. Real-time Firestore Data Listener (for Synced Data) ---
+    // --- 2. Real-time Database Data Listener (for Synced Data) ---
     useEffect(() => {
         if (!db || !user || !isOnline) {
             setLoading(false);
-            return; 
+            return;
         }
 
         setLoading(true);
-        const path = USER_EXPENSES_COLLECTION_PATH(user.uid);
-        const q = query(collection(db, path));
+        const userExpensesRef = ref(db, USER_EXPENSES_PATH(user.uid));
 
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const fetchedExpenses = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data(),
-                timestamp: timestampToDate(doc.data().timestamp),
-                syncStatus: 'synced' as 'synced',
-            } as Expense));
+        onValue(userExpensesRef, (snapshot) => {
+            const data = snapshot.val();
+            const fetchedExpenses: Expense[] = [];
+
+            if (data) {
+                // Convert object to array
+                Object.keys(data).forEach(key => {
+                    fetchedExpenses.push({
+                        id: key,
+                        ...data[key],
+                        timestamp: timestampToDate(data[key].timestamp),
+                        syncStatus: 'synced' as 'synced',
+                    });
+                });
+            }
 
             fetchedExpenses.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 
@@ -683,7 +707,7 @@ const App = () => {
             }
         });
 
-        return () => unsubscribe();
+        return () => off(userExpensesRef);
     }, [db, user, isOnline, isAuthenticated, handleSignOut]); // Removed pendingExpenses from dependencies
     
     
@@ -738,9 +762,11 @@ const App = () => {
             if (isOnline && isAuthenticated && db && user) {
                 // ONLINE: Save to Firebase (listener handles state update)
                 const { id, syncStatus, ...firebaseExpense } = newExpense;
-                await addDoc(collection(db, USER_EXPENSES_COLLECTION_PATH(user.uid)), {
+                const userExpensesRef = ref(db, USER_EXPENSES_PATH(user.uid));
+                const newExpenseRef = push(userExpensesRef);
+                await set(newExpenseRef, {
                     ...firebaseExpense,
-                    timestamp: Timestamp.fromDate(dateTime),
+                    timestamp: dateTime.getTime(), // Store as milliseconds
                 });
                 // showModal("Expense Saved", "Successfully saved to the cloud.");
 
@@ -814,7 +840,8 @@ const App = () => {
                         setLoading(false);
                         return;
                     }
-                    await deleteDoc(doc(db, USER_EXPENSES_COLLECTION_PATH(user.uid), id)); 
+                    const expenseRef = ref(db, `${USER_EXPENSES_PATH(user.uid)}/${id}`);
+                    await remove(expenseRef); 
                 } catch (error: any) {
                     console.error("Error deleting expense:", error);
                     showModal("Delete Error", `Failed to delete expense: ${error.message}`);
@@ -893,6 +920,28 @@ const App = () => {
         );
     };
 
+    const toggleTagSelection = (tag: string) => {
+        setSelectedTags(prev =>
+            prev.includes(tag)
+                ? prev.filter(t => t !== tag)
+                : [...prev, tag]
+        );
+    };
+
+    // Calculate total for list view filtered expenses
+    const listViewTotal = useMemo(() => {
+        return listViewExpenses.reduce((sum, expense) => sum + expense.amount, 0);
+    }, [listViewExpenses]);
+
+    // Get available years from expenses (for StatsView)
+    const availableYears = useMemo(() => {
+        const yearsSet = new Set<number>();
+        allExpenses.forEach(expense => {
+            yearsSet.add(expense.timestamp.getFullYear());
+        });
+        return Array.from(yearsSet).sort((a, b) => b - a);
+    }, [allExpenses]);
+
     // --- Components ---
 
     const ListView = () => {
@@ -928,6 +977,15 @@ const App = () => {
                                 Offline
                             </>
                         )}
+                    </div>
+                </div>
+
+                {/* Total Amount Display */}
+                <div className="mb-4 p-4 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg shadow-md">
+                    <div className="text-white">
+                        <p className="text-sm font-medium opacity-90">Total Amount</p>
+                        <p className="text-3xl font-extrabold">{formatAmount(listViewTotal, currency)}</p>
+                        <p className="text-xs opacity-80 mt-1">{listViewExpenses.length} transaction{listViewExpenses.length !== 1 ? 's' : ''}</p>
                     </div>
                 </div>
 
@@ -1006,6 +1064,63 @@ const App = () => {
                             </div>
                         </div>
                     )}
+
+                    {/* Search by Description */}
+                    <div className="pt-2 border-t border-gray-200">
+                        <label className="block text-xs text-gray-600 mb-1">Search by Description</label>
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                            <input
+                                type="text"
+                                value={searchText}
+                                onChange={(e) => setSearchText(e.target.value)}
+                                placeholder="Type to search..."
+                                className="w-full pl-10 pr-4 p-2 text-sm border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
+                            />
+                        </div>
+                    </div>
+
+                    {/* Tag Filter */}
+                    <div className="pt-2 border-t border-gray-200">
+                        <label className="block text-xs text-gray-600 mb-2">Filter by Tags</label>
+                        <div className="flex gap-2 flex-wrap">
+                            {TAGS.map(tag => {
+                                const tagColor = {
+                                    'Shopping': 'bg-pink-100 text-pink-700 border-pink-300',
+                                    'Food': 'bg-green-100 text-green-700 border-green-300',
+                                    'Travel': 'bg-blue-100 text-blue-700 border-blue-300',
+                                    'Hospital': 'bg-red-100 text-red-700 border-red-300',
+                                    'Wife': 'bg-purple-100 text-purple-700 border-purple-300',
+                                    'Baby': 'bg-yellow-100 text-yellow-700 border-yellow-300',
+                                    'Me': 'bg-indigo-100 text-indigo-700 border-indigo-300',
+                                    'Bills': 'bg-cyan-100 text-cyan-700 border-cyan-300',
+                                    'Other': 'bg-gray-100 text-gray-700 border-gray-300',
+                                }[tag] || 'bg-gray-100 text-gray-700 border-gray-300';
+                                const isSelected = selectedTags.includes(tag);
+                                return (
+                                    <button
+                                        key={tag}
+                                        onClick={() => toggleTagSelection(tag)}
+                                        className={`px-3 py-1 text-xs font-medium rounded-full border-2 transition ${
+                                            isSelected
+                                                ? tagColor + ' ring-2 ring-offset-1 ring-indigo-400'
+                                                : 'bg-white text-gray-600 border-gray-200 hover:' + tagColor
+                                        }`}
+                                    >
+                                        {tag}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        {selectedTags.length > 0 && (
+                            <button
+                                onClick={() => setSelectedTags([])}
+                                className="mt-2 text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                            >
+                                Clear tag filters
+                            </button>
+                        )}
+                    </div>
                 </div>
 
                 {/* Transaction Count */}
@@ -1042,38 +1157,68 @@ const App = () => {
 
     
     
+    const handlePrevYear = () => {
+        setFilterYear(prev => prev - 1);
+    };
+
+    const handleNextYear = () => {
+        setFilterYear(prev => prev + 1);
+    };
+
     const StatsView = () => {
         const handleMonthClick = (monthIndex: number) => {
-            const monthKey = `${filterYear}-${String(monthIndex + 1).padStart(2, '0')}`;
-            setSelectedMonths([monthKey]);
-            setFilterMode('selected');
-            setVisibleCount(30);
-            setView('list');
+            // Update the existing month slider to show clicked month
+            setFilterMonth(monthIndex);
         };
 
         return (
             <div className="p-4 bg-white rounded-xl shadow-lg">
-                <h2 className="text-2xl font-bold mb-6 text-gray-800 flex items-center">
+                <h2 className="text-2xl font-bold mb-4 text-gray-800 flex items-center">
                     <Calendar className="w-5 h-5 mr-2 text-green-500" />
-                    Financial Overview ({filterYear})
+                    Financial Overview
                 </h2>
+
+                {/* Year Selector */}
+                <div className="flex justify-between items-center mb-6 p-3 bg-indigo-50 rounded-lg shadow-inner">
+                    <button onClick={handlePrevYear} className="p-2 text-indigo-700 hover:bg-indigo-200 rounded-full transition duration-150">
+                        <ArrowLeft className="w-5 h-5" />
+                    </button>
+                    <div className="flex-grow text-center">
+                        <h3 className="text-xl font-bold text-indigo-800">{filterYear}</h3>
+                        {availableYears.length > 0 && (
+                            <p className="text-xs text-indigo-600 mt-1">
+                                Available: {availableYears.join(', ')}
+                            </p>
+                        )}
+                    </div>
+                    <button onClick={handleNextYear} className="p-2 text-indigo-700 hover:bg-indigo-200 rounded-full transition duration-150">
+                        <ArrowRight className="w-5 h-5" />
+                    </button>
+                </div>
 
                 {/* Annual Summary */}
                 <div className="mb-8 border border-gray-200 rounded-xl p-4 bg-gray-50">
                     <h3 className="text-xl font-semibold mb-3 text-gray-700">Yearly Snapshot</h3>
-                    <p className="text-xs text-gray-500 mb-3">Click on any month to view transactions</p>
+                    <p className="text-xs text-gray-500 mb-3">Click on any month to view transactions below</p>
                     <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-3">
-                        {annualTotals.map((data, index) => (
-                            <button
-                                key={index}
-                                onClick={() => handleMonthClick(index)}
-                                className="p-2 text-center bg-white rounded-lg shadow-sm border border-indigo-100 hover:shadow-md hover:border-indigo-300 transition cursor-pointer"
-                            >
-                                <div className="text-xs font-medium text-indigo-600">{data.monthName}</div>
-                                <div className="text-sm font-bold text-gray-900">{formatAmount(data.total, currency)}</div>
-                                <div className="text-xs text-gray-500">{data.count} items</div>
-                            </button>
-                        ))}
+                        {annualTotals.map((data, index) => {
+                            const isSelected = filterMonth === index;
+                            return (
+                                <button
+                                    key={index}
+                                    onClick={() => handleMonthClick(index)}
+                                    className={`p-2 text-center bg-white rounded-lg shadow-sm border-2 transition cursor-pointer ${
+                                        isSelected
+                                            ? 'border-indigo-500 ring-2 ring-indigo-300 shadow-md'
+                                            : 'border-indigo-100 hover:shadow-md hover:border-indigo-300'
+                                    }`}
+                                >
+                                    <div className="text-xs font-medium text-indigo-600">{data.monthName}</div>
+                                    <div className="text-sm font-bold text-gray-900">{formatAmount(data.total, currency)}</div>
+                                    <div className="text-xs text-gray-500">{data.count} items</div>
+                                </button>
+                            );
+                        })}
                     </div>
                     <p className="mt-4 text-sm text-gray-600">
                         Year Total Expense:
@@ -1084,15 +1229,15 @@ const App = () => {
                 </div>
 
                 {/* Monthly Filter and Total */}
-                <div className="flex justify-between items-center mb-6 p-3 bg-indigo-50 rounded-lg shadow-inner">
-                    <button onClick={handlePrevMonth} className="p-2 text-indigo-700 hover:bg-indigo-200 rounded-full transition duration-150">
+                <div className="flex justify-between items-center mb-6 p-3 bg-green-50 rounded-lg shadow-inner">
+                    <button onClick={handlePrevMonth} className="p-2 text-green-700 hover:bg-green-200 rounded-full transition duration-150">
                         <ArrowLeft className="w-5 h-5" />
                     </button>
-                    <h3 className="lg:text-lg font-semibold text-indigo-800 flex-grow text-center">
+                    <h3 className="lg:text-lg font-semibold text-green-800 flex-grow text-center">
                         {filterDateString} Total:
                         <span className="font-extrabold ml-2">{formatAmount(monthlyTotal, currency)}</span>
                     </h3>
-                    <button onClick={handleNextMonth} className="p-2 text-indigo-700 hover:bg-indigo-200 rounded-full transition duration-150">
+                    <button onClick={handleNextMonth} className="p-2 text-green-700 hover:bg-green-200 rounded-full transition duration-150">
                         <ArrowRight className="w-5 h-5" />
                     </button>
                 </div>
@@ -1274,6 +1419,31 @@ const App = () => {
                              </div >
                         )}
                     </div >
+
+                    {/* Danger Zone - Delete All Data */}
+                    <div className="mt-8 border-t-4 border-red-200 pt-6">
+                        <h3 className="text-xl font-semibold mb-3 text-red-700 flex items-center">
+                            <AlertTriangle className="w-5 h-5 mr-2" />
+                            Danger Zone
+                        </h3 >
+                        <p className="text-sm text-gray-600 mb-4">
+                            Permanently delete all your expense data. This action cannot be undone.
+                        </p>
+
+                        <button
+                            onClick={handleDeleteAllData}
+                            disabled={loading || allExpenses.length === 0}
+                            className="flex items-center px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg shadow-md hover:bg-red-700 transition duration-150 disabled:opacity-50 w-full justify-center"
+                        >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Delete All Data ({allExpenses.length} records)
+                        </button>
+                        {allExpenses.length === 0 && (
+                            <p className="text-xs text-gray-500 mt-2 text-center">
+                                No data to delete
+                            </p>
+                        )}
+                    </div >
                 </div >
             </div >
         );
@@ -1283,15 +1453,15 @@ const App = () => {
     const syncRestoredCsvToFirebase = async (dataToSync: Expense[], userId: string) => {
         if (!db || !user) return;
         showModal(
-            'Confirm CSV Import', 
-            `This will attempt to upload ${dataToSync.length} records from the CSV file. IDs will be used to prevent duplicates if they match existing records.`, 
-            true, 
+            'Confirm CSV Import',
+            `This will attempt to upload ${dataToSync.length} records from the CSV file. IDs will be used to prevent duplicates if they match existing records.`,
+            true,
             async () => {
                 setLoading(true);
                 try {
-                    const expenseCollectionRef = collection(db, USER_EXPENSES_COLLECTION_PATH(userId));
+                    const userExpensesRef = ref(db, USER_EXPENSES_PATH(userId));
                     const existingExpenseIds = new Set(expenses.map(e => e.id));
-                    
+
                     const syncPromises = dataToSync.map(restoredExpense => {
                         const expenseToSave = {
                             userId: userId,
@@ -1299,24 +1469,26 @@ const App = () => {
                             currency: restoredExpense.currency,
                             description: restoredExpense.description,
                             tag: restoredExpense.tag,
-                            timestamp: Timestamp.fromDate(restoredExpense.timestamp),
+                            timestamp: restoredExpense.timestamp.getTime(), // Store as milliseconds
                             dateStr: restoredExpense.dateStr,
                             timeStr: restoredExpense.timeStr,
                         };
 
-                        if (restoredExpense.id && existingExpenseIds.has(restoredExpense.id)) {
+                        if (restoredExpense.id && !restoredExpense.id.startsWith('local-') && existingExpenseIds.has(restoredExpense.id)) {
                             // Update existing record
-                            return setDoc(doc(expenseCollectionRef, restoredExpense.id), expenseToSave, { merge: true });
+                            const expenseRef = ref(db, `${USER_EXPENSES_PATH(userId)}/${restoredExpense.id}`);
+                            return set(expenseRef, expenseToSave);
                         } else {
                             // Add new record
-                            return addDoc(expenseCollectionRef, expenseToSave);
+                            const newExpenseRef = push(userExpensesRef);
+                            return set(newExpenseRef, expenseToSave);
                         }
                     });
-                    
+
                     await Promise.all(syncPromises);
                     setRestoredData(null); // Clear staging data
                     showModal('Import Complete', `${syncPromises.length} records processed and synchronized with the cloud.`);
-                    
+
                 } catch (error: any) {
                     console.error("Error during CSV import sync:", error);
                     showModal('Import Failed', `Failed to complete synchronization: ${error.message}.`);
@@ -1361,13 +1533,13 @@ const App = () => {
                 try {
                     const csvContent = event.target?.result as string;
                     const parsedData = parseCsv(csvContent);
-                    
+
                     if (parsedData.length === 0) {
                         showModal('Restore Failed', 'The selected file contained no valid expense records.');
                         setRestoredData(null);
                         return;
                     }
-                    
+
                     setRestoredData(parsedData);
                     showModal('Backup Loaded', `${parsedData.length} records loaded from CSV. Go to Settings > Cloud & Data Sync to import them.`);
                     setView('settings');
@@ -1386,6 +1558,41 @@ const App = () => {
         };
 
         fileInput.click();
+    };
+
+    // Delete all data function
+    const handleDeleteAllData = async () => {
+        showModal(
+            'Delete All Data',
+            'WARNING: This will permanently delete ALL your expenses from both cloud and local storage. This action cannot be undone!\n\nAre you sure you want to continue?',
+            true,
+            async () => {
+                try {
+                    setLoading(true);
+
+                    // Delete from Realtime Database if authenticated and online
+                    if (db && user && isOnline) {
+                        const userExpensesRef = ref(db, USER_EXPENSES_PATH(user.uid));
+                        await remove(userExpensesRef);
+                    }
+
+                    // Clear local storage
+                    localStorage.removeItem(LOCAL_STORAGE_KEY);
+
+                    // Reset state
+                    setExpenses([]);
+                    setPendingExpenses([]);
+                    setRestoredData(null);
+
+                    showModal('Data Deleted', 'All expense data has been permanently deleted.');
+                } catch (error: any) {
+                    console.error("Error deleting all data:", error);
+                    showModal('Delete Failed', `Failed to delete all data: ${error.message}`);
+                } finally {
+                    setLoading(false);
+                }
+            }
+        );
     };
 
     // Authentication View
@@ -1431,7 +1638,7 @@ const App = () => {
     if (loading && !isAuthenticated && allExpenses.length === 0) {
         return (
             <div className="min-h-screen bg-gray-100 font-sans flex flex-col items-center justify-center p-4">
-                <h1 className="text-4xl font-extrabold text-indigo-700 mb-4">MoneyTrack</h1 >
+                <h1 className="text-4xl font-extrabold text-indigo-700 mb-4">Sai</h1 >
                 <div className="flex items-center justify-center space-x-2 text-gray-500">
                     <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -1448,7 +1655,7 @@ const App = () => {
         return (
             <div className="min-h-screen bg-gray-100 font-sans p-4 sm:p-6 flex flex-col items-center justify-center">
                 <header className="w-full max-w-2xl mb-6 text-center">
-                    <h1 className="text-4xl font-extrabold text-indigo-700">MoneyTrack</h1 >
+                    <h1 className="text-4xl font-extrabold text-indigo-700">Sai</h1 >
                 </header>
                 <main className="w-full max-w-2xl flex-grow flex items-center justify-center">
                     {AuthView()}
@@ -1463,7 +1670,7 @@ const App = () => {
             <header className="w-full max-w-2xl flex justify-between items-center mb-6">
                 <div className="flex items-center space-x-2">
                     <h1 className="text-3xl font-extrabold text-indigo-700">
-                        MoneyTrack
+                        Sai
                     </h1 >
                     <span className="text-sm text-gray-500">(v{currency})</span >
                 </div >
