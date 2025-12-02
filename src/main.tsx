@@ -9,6 +9,10 @@ import { Download } from 'lucide-react'
 let serviceWorkerRegistration: ServiceWorkerRegistration | null = null;
 
 const registerServiceWorker = (onUpdateAvailable: () => void) => {
+  if(location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+    console.log('[App] Running on localhost, skipping service worker registration.');
+    return;
+  }
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('/expense-manager/service-worker.js')

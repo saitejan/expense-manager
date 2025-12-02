@@ -1,21 +1,25 @@
-
-const firebaseConfig = {
-  apiKey: "AIzaSyCchJ0xoRHhNC7NcuWdzmLxlbEyH3fOZA0",
-  authDomain: "expense-manaeger.firebaseapp.com",
-  databaseURL: "https://expense-manaeger-default-rtdb.firebaseio.com",
-  projectId: "expense-manaeger",
-  storageBucket: "expense-manaeger.firebasestorage.app",
-  messagingSenderId: "773230073358",
-  appId: "1:773230073358:web:2cf7feee179a90c85c4e5f"
-};
-
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 import { getDatabase, ref, push, onValue, remove, set, off } from 'firebase/database';
 import {
-    PlusCircle, Trash2, Calendar, DollarSign, Tag, User, Download, Settings, LogOut, ArrowLeft, ArrowRight, Save, Upload, AlertTriangle, Lock, CloudOff, Cloud, HardDrive, Search
+    PlusCircle, Trash2, Calendar, DollarSign, Tag, User, Download, Settings, LogOut, ArrowLeft, ArrowRight, Save, Upload, AlertTriangle, CloudOff, Cloud, HardDrive, Search
 } from 'lucide-react';
+
+// --- Firebase Configuration from Environment Variables ---
+const getFirebaseConfig = () => {
+  return {
+    apiKey: import.meta.env.VITE_FIREBASE_API_KEY || '',
+    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || '',
+    databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL || '',
+    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || '',
+    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || '',
+    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
+    appId: import.meta.env.VITE_FIREBASE_APP_ID || '',
+  };
+};
+
+const firebaseConfig = getFirebaseConfig();
 
 // --- CONSTANTS ---
 const LOCAL_STORAGE_KEY = 'moneytrack_local_expenses';
@@ -389,8 +393,12 @@ const parseCsv = (csv: string): Expense[] => {
             
             if (isNaN(amount)) continue;
 
+            // Generate ID if empty or whitespace
+            const csvId = row[0]?.trim();
+            const id = csvId && csvId.length > 0 ? csvId : `imported-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
             data.push({
-                id: row[0],
+                id: id,
                 userId: row[1],
                 amount: amount,
                 currency: row[3],
@@ -580,35 +588,48 @@ const App = () => {
     // --- 1. Firebase Initialization and Authentication Listener ---
     useEffect(() => {
         const initFirebase = async () => {
-            if (Object.keys(firebaseConfig).length === 0) {
-                console.error("Firebase config is empty. Cannot initialize.");
+            // If Firebase config is missing, allow local-only mode
+            if (!Object.keys(firebaseConfig).some(key => firebaseConfig[key as keyof typeof firebaseConfig])) {
+                console.warn("Firebase config not fully configured. Running in local-only mode.");
                 setLoading(false);
+                // Load local data and show list or auth view
+                loadExpensesFromLocalStorage(setExpenses, setPendingExpenses);
                 setView('auth');
                 return;
             }
 
-            const app = initializeApp(firebaseConfig);
-            const database = getDatabase(app);
-            const firebaseAuth = getAuth(app);
+            try {
+                const app = initializeApp(firebaseConfig);
+                const database = getDatabase(app);
+                const firebaseAuth = getAuth(app);
 
-            setDb(database);
-            setAuth(firebaseAuth);
+                setDb(database);
+                setAuth(firebaseAuth);
 
-            const unsubscribe = onAuthStateChanged(firebaseAuth, (currentUser) => {
-                if (currentUser) {
-                    setUser(currentUser);
-                    setView('list');
-                } else {
-                    setUser(null);
-                    setLoading(false);
-                    // Check if we have local data, otherwise show auth screen
-                    if (allExpenses.length === 0) {
-                        setView('auth');
+                const unsubscribe = onAuthStateChanged(firebaseAuth, (currentUser) => {
+                    if (currentUser) {
+                        setUser(currentUser);
+                        setView('list');
+                    } else {
+                        setUser(null);
+                        setLoading(false);
+                        // Check if we have local data, otherwise show auth screen
+                        loadExpensesFromLocalStorage(setExpenses, setPendingExpenses);
+                        if (allExpenses.length === 0) {
+                            setView('auth');
+                        } else {
+                            setView('list');
+                        }
                     }
-                }
-            });
+                });
 
-            return () => unsubscribe();
+                return () => unsubscribe();
+            } catch (error) {
+                console.error("Firebase initialization failed. Running in local-only mode.", error);
+                setLoading(false);
+                loadExpensesFromLocalStorage(setExpenses, setPendingExpenses);
+                setView('auth');
+            }
         };
         initFirebase();
     // This effect runs only once on mount for initialization. No dependencies needed.
@@ -803,8 +824,12 @@ const App = () => {
     const handleDeleteExpense = async (id: string) => {
         if (!id) return;
 
-        // 1. Local Delete (Pending Item)
-        if (id.startsWith('local-')) {
+        // Find the expense to determine if it's pending or synced
+        const expense = allExpenses.find(e => e.id === id);
+        if (!expense) return;
+
+        // 1. Local Delete (Pending Item - includes newly created and imported CSV items)
+        if (expense.syncStatus === 'pending') {
             showModal(
                 "Confirm Local Deletion", 
                 "Are you sure you want to delete this pending expense? It has not been synced to the cloud.", 
@@ -815,7 +840,7 @@ const App = () => {
                         saveAllExpensesToLocalStorage(expenses, newPending);
                         return newPending;
                     });
-                    showModal("Expense Deleted", "Locally pending expense removed.");
+                    showModal("Expense Deleted", "Pending expense removed.");
                 }
             );
             return;
@@ -1413,9 +1438,55 @@ const App = () => {
                             </div >
                         )}
                         {restoredData && !isAuthenticated && (
-                             <div className="mt-6 p-4 bg-red-100 border-l-4 border-red-500 text-red-800 rounded-lg">
-                                 <p className="font-semibold">Sign In Required:</p>
-                                 <p className="text-sm">Please sign in to save the {restoredData.length} records loaded from CSV to your private cloud storage.</p>
+                             <div className="mt-6 p-4 bg-blue-100 border-l-4 border-blue-500 text-blue-800 rounded-lg">
+                                 <p className="font-semibold">Import Options:</p>
+                                 <p className="text-sm mb-3">You are not signed in. Choose how to import these {restoredData.length} records:</p>
+                                 <button
+                                    onClick={() => {
+                                        showModal(
+                                            'Confirm Local Import',
+                                            `This will import ${restoredData.length} records to your local storage. They will be saved to your browser and can be synced to the cloud later if you sign in.`,
+                                            true,
+                                            () => {
+                                                setLoading(true);
+                                                try {
+                                                    // Mark all records as pending so they can be synced later
+                                                    // Also ensure each has a unique ID
+                                                    const importedExpenses = restoredData.map((exp, idx) => {
+                                                        const csvId = exp.id?.trim();
+                                                        return {
+                                                            ...exp,
+                                                            id: csvId && csvId.length > 0 ? csvId : `imported-${Date.now()}-${idx}`,
+                                                            syncStatus: 'pending' as const
+                                                        };
+                                                    });
+                                                    
+                                                    setPendingExpenses(prev => {
+                                                        const combined = [...prev, ...importedExpenses];
+                                                        saveAllExpensesToLocalStorage(expenses, combined);
+                                                        return combined;
+                                                    });
+                                                    
+                                                    setRestoredData(null);
+                                                    showModal('Import Complete', `${restoredData.length} records imported to local storage. They will sync to cloud when you sign in.`);
+                                                    setView('list');
+                                                } catch (error: any) {
+                                                    console.error("Error during local import:", error);
+                                                    showModal('Import Failed', `Failed to import records: ${error.message}`);
+                                                } finally {
+                                                    setLoading(false);
+                                                }
+                                            }
+                                        );
+                                    }}
+                                    disabled={loading}
+                                    className="w-full px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg shadow-md hover:bg-blue-700 transition duration-150 disabled:opacity-50"
+                                >
+                                    Import to Local Storage
+                                </button>
+                                <p className="text-xs text-blue-700 mt-2">
+                                    Or sign in to sync directly to the cloud.
+                                </p>
                              </div >
                         )}
                     </div >
@@ -1595,40 +1666,54 @@ const App = () => {
         );
     };
 
-    // Authentication View
+    // Authentication View - Allow local usage or sign in for cloud sync
     const AuthView = () => (
-        <div className="flex flex-col items-center justify-center p-6 bg-white rounded-xl shadow-lg text-center h-full min-h-[300px]">
-          <Lock className="w-12 h-12 mb-4 text-indigo-500" />
-          <h2 className="text-2xl font-bold mb-3 text-indigo-700">Secure Access Required</h2 >
+        <div className="flex flex-col items-center justify-center p-6 bg-white rounded-xl shadow-lg text-center h-full min-h-[400px]">
+          <Cloud className="w-12 h-12 mb-4 text-indigo-500" />
+          <h2 className="text-2xl font-bold mb-3 text-indigo-700">Welcome to ExpenseManager</h2>
           <p className="text-gray-600 mb-6">
-            Please sign in with Google to enable cloud sync for your private expense data.
+            Track your expenses locally or sign in with Google for cloud sync across devices.
           </p>
-          {loading ? (
-            <button
-              disabled
-              className="flex items-center px-6 py-3 text-sm font-semibold text-white bg-gray-500 rounded-lg disabled:opacity-70"
-            >
-                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                Connecting...
-            </button>
-          ) : (
-            <button
-              onClick={signInWithGoogle}
-              className="flex items-center px-6 py-3 text-sm font-semibold text-white bg-indigo-600 rounded-lg shadow-md hover:bg-indigo-700 transition duration-150"
-            >
-              <svg className="w-5 h-5 mr-2" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M44 24.896c0-1.636-.14-3.232-.408-4.792H24v9.063h11.136c-.476 2.376-1.764 4.412-3.552 5.864l7.668 5.928c4.544-4.204 7.156-10.372 7.156-17.064z" fill="#4285F4"/>
-                <path d="M24 44c5.58 0 10.288-1.856 13.72-5.064l-7.668-5.928c-2.124 1.436-4.856 2.276-7.052 2.276-5.46 0-10.088-3.708-11.756-8.688H3.32l-.088 6.132c3.556 7.04 10.74 11.964 19.332 11.964z" fill="#34A853"/>
-                <path d="M12.244 27.656c-.512-1.536-.796-3.176-.796-4.896s.284-3.36.796-4.896l-.048-6.056H3.32C1.652 16.036.796 19.956.796 24c0 4.044.856 7.964 2.524 11.096l8.92-6.056z" fill="#FBBC05"/>
-                <path d="M24 15.312c2.964 0 5.612 1.056 7.708 2.972l6.572-6.572C33.84 5.956 29.324 4 24 4c-8.592 0-15.776 4.924-19.332 11.964l8.92 6.056C13.912 19.02 18.54 15.312 24 15.312z" fill="#EA4335"/>
-              </svg>
-              Sign In with Google
-            </button>
-          )}
-        </div >
+          <div className="space-y-3 w-full">
+            {loading ? (
+              <button
+                disabled
+                className="flex items-center justify-center w-full px-6 py-3 text-sm font-semibold text-white bg-gray-500 rounded-lg disabled:opacity-70"
+              >
+                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Connecting...
+              </button>
+            ) : (
+              <>
+                <button
+                  onClick={signInWithGoogle}
+                  className="flex items-center justify-center w-full px-6 py-3 text-sm font-semibold text-white bg-indigo-600 rounded-lg shadow-md hover:bg-indigo-700 transition duration-150"
+                >
+                  <svg className="w-5 h-5 mr-2" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M44 24.896c0-1.636-.14-3.232-.408-4.792H24v9.063h11.136c-.476 2.376-1.764 4.412-3.552 5.864l7.668 5.928c4.544-4.204 7.156-10.372 7.156-17.064z" fill="#4285F4"/>
+                    <path d="M24 44c5.58 0 10.288-1.856 13.72-5.064l-7.668-5.928c-2.124 1.436-4.856 2.276-7.052 2.276-5.46 0-10.088-3.708-11.756-8.688H3.32l-.088 6.132c3.556 7.04 10.74 11.964 19.332 11.964z" fill="#34A853"/>
+                    <path d="M12.244 27.656c-.512-1.536-.796-3.176-.796-4.896s.284-3.36.796-4.896l-.048-6.056H3.32C1.652 16.036.796 19.956.796 24c0 4.044.856 7.964 2.524 11.096l8.92-6.056z" fill="#FBBC05"/>
+                    <path d="M24 15.312c2.964 0 5.612 1.056 7.708 2.972l6.572-6.572C33.84 5.956 29.324 4 24 4c-8.592 0-15.776 4.924-19.332 11.964l8.92 6.056C13.912 19.02 18.54 15.312 24 15.312z" fill="#EA4335"/>
+                  </svg>
+                  Sign In with Google (Cloud Sync)
+                </button>
+                <button
+                  onClick={() => { setLoading(false); setView('list'); }}
+                  className="flex items-center justify-center w-full px-6 py-3 text-sm font-semibold text-indigo-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition duration-150"
+                >
+                  <HardDrive className="w-5 h-5 mr-2" />
+                  Continue with Local Storage
+                </button>
+              </>
+            )}
+          </div>
+          <p className="text-xs text-gray-500 mt-6">
+            Local mode: Data saved to browser storage only. Cloud mode: Sign in to backup data to Firebase.
+          </p>
+        </div>
     );
 
 
@@ -1650,17 +1735,17 @@ const App = () => {
         );
     }
 
-    // If not authenticated and no local data, show the Sign-In view
-    if (!isAuthenticated && view === 'auth' && allExpenses.length === 0) {
+    // Show the Sign-In / Get Started view
+    if (view === 'auth' && !isAuthenticated && allExpenses.length === 0) {
         return (
             <div className="min-h-screen bg-gray-100 font-sans p-4 sm:p-6 flex flex-col items-center justify-center">
                 <header className="w-full max-w-2xl mb-6 text-center">
-                    <h1 className="text-4xl font-extrabold text-indigo-700">Sai</h1 >
+                    <h1 className="text-4xl font-extrabold text-indigo-700">Sai</h1>
                 </header>
                 <main className="w-full max-w-2xl flex-grow flex items-center justify-center">
                     {AuthView()}
                 </main>
-            </div >
+            </div>
         );
     }
 
@@ -1704,14 +1789,52 @@ const App = () => {
                     {view === 'stats' && StatsView()}
                     {view === 'settings' && SettingsView()}
                     {view === 'auth' && !isAuthenticated && allExpenses.length > 0 && (
-                        <div className="p-4 mb-4 bg-red-100 border-l-4 border-red-500 text-red-700 rounded-lg">
-                            <p className="font-semibold flex items-center mb-1">
-                                <Lock className="w-5 h-5 mr-2" />
-                                Cloud Sync Disabled
+                        <div className={`p-4 mb-4 border-l-4 rounded-lg ${pendingExpenses.length > 0 ? 'bg-orange-100 border-orange-500 text-orange-700' : 'bg-blue-100 border-blue-500 text-blue-700'}`}>
+                            <p className="font-semibold flex items-center mb-2">
+                                {pendingExpenses.length > 0 ? (
+                                    <>
+                                        <Save className="w-5 h-5 mr-2" />
+                                        {pendingExpenses.length} Pending Items
+                                    </>
+                                ) : (
+                                    <>
+                                        <HardDrive className="w-5 h-5 mr-2" />
+                                        Local Mode
+                                    </>
+                                )}
                             </p>
-                            <p className="text-sm">
-                                You are viewing local data. Please go to **Settings** and sign in to access cloud features and sync pending items.
+                            <p className="text-sm mb-3">
+                                {pendingExpenses.length > 0 
+                                    ? `You have ${pendingExpenses.length} expenses waiting to sync. Sign in to save them to the cloud.`
+                                    : 'You are using local storage. Sign in anytime to enable cloud sync and backup.'}
                             </p>
+                            {auth && (
+                                <button
+                                    onClick={signInWithGoogle}
+                                    disabled={loading}
+                                    className="flex items-center justify-center px-4 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-lg shadow-md hover:bg-indigo-700 transition duration-150 disabled:opacity-50 w-full sm:w-auto"
+                                >
+                                    {loading ? (
+                                        <>
+                                            <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            </svg>
+                                            Connecting...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <svg className="w-4 h-4 mr-2" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                <path d="M44 24.896c0-1.636-.14-3.232-.408-4.792H24v9.063h11.136c-.476 2.376-1.764 4.412-3.552 5.864l7.668 5.928c4.544-4.204 7.156-10.372 7.156-17.064z" fill="#4285F4"/>
+                                                <path d="M24 44c5.58 0 10.288-1.856 13.72-5.064l-7.668-5.928c-2.124 1.436-4.856 2.276-7.052 2.276-5.46 0-10.088-3.708-11.756-8.688H3.32l-.088 6.132c3.556 7.04 10.74 11.964 19.332 11.964z" fill="#34A853"/>
+                                                <path d="M12.244 27.656c-.512-1.536-.796-3.176-.796-4.896s.284-3.36.796-4.896l-.048-6.056H3.32C1.652 16.036.796 19.956.796 24c0 4.044.856 7.964 2.524 11.096l8.92-6.056z" fill="#FBBC05"/>
+                                                <path d="M24 15.312c2.964 0 5.612 1.056 7.708 2.972l6.572-6.572C33.84 5.956 29.324 4 24 4c-8.592 0-15.776 4.924-19.332 11.964l8.92 6.056C13.912 19.02 18.54 15.312 24 15.312z" fill="#EA4335"/>
+                                            </svg>
+                                            Sign In with Google
+                                        </>
+                                    )}
+                                </button>
+                            )}
                         </div >
                     )}
                 </div >
