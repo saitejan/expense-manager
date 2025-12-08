@@ -197,7 +197,110 @@ const AddExpenseView: React.FC<{
     isOnline: boolean;
     setView: React.Dispatch<React.SetStateAction<'list' | 'add' | 'stats' | 'settings' | 'auth'>>;
     currency: string;
-}> = ({ form, handleFormClose, handleFormChange, handleAddExpense, loading, isAuthenticated, isOnline, currency }) => {
+    expenses: Expense[];
+    availableTags: string[];
+}> = ({ form, handleFormClose, handleFormChange, handleAddExpense, loading, isAuthenticated, isOnline, currency, expenses, availableTags }) => {
+    const [showSuggestions, setShowSuggestions] = React.useState(false);
+    const [filteredSuggestions, setFilteredSuggestions] = React.useState<string[]>([]);
+    const descriptionInputRef = React.useRef<HTMLInputElement>(null);
+
+    const [showTagDropdown, setShowTagDropdown] = React.useState(false);
+    const [tagSearchText, setTagSearchText] = React.useState('');
+    const [filteredTags, setFilteredTags] = React.useState<string[]>([]);
+    const tagInputRef = React.useRef<HTMLDivElement>(null);
+
+    // Get unique descriptions from previous expenses (latest first)
+    const uniqueDescriptions = React.useMemo(() => {
+        // Sort expenses by timestamp (newest first)
+        const sortedExpenses = [...expenses].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+
+        // Extract descriptions while preserving order and removing duplicates
+        const seen = new Set<string>();
+        const uniqueDescs: string[] = [];
+
+        sortedExpenses.forEach(expense => {
+            if (!seen.has(expense.description)) {
+                seen.add(expense.description);
+                uniqueDescs.push(expense.description);
+            }
+        });
+
+        return uniqueDescs;
+    }, [expenses]);
+
+    // Filter description suggestions based on current input
+    React.useEffect(() => {
+        if (form.description.trim().length > 0) {
+            const filtered = uniqueDescriptions.filter(desc =>
+                desc.toLowerCase().includes(form.description.toLowerCase())
+            );
+            setFilteredSuggestions(filtered);
+            setShowSuggestions(filtered.length > 0);
+        } else {
+            setFilteredSuggestions([]);
+            setShowSuggestions(false);
+        }
+    }, [form.description, uniqueDescriptions]);
+
+    // Filter tags based on search text
+    React.useEffect(() => {
+        if (tagSearchText.trim().length > 0) {
+            const filtered = availableTags.filter(tag =>
+                tag.toLowerCase().includes(tagSearchText.toLowerCase())
+            );
+            setFilteredTags(filtered);
+        } else {
+            setFilteredTags(availableTags);
+        }
+    }, [tagSearchText, availableTags]);
+
+    // Close tag dropdown when clicking outside
+    React.useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (tagInputRef.current && !tagInputRef.current.contains(event.target as Node)) {
+                setShowTagDropdown(false);
+            }
+        };
+
+        if (showTagDropdown) {
+            document.addEventListener('mousedown', handleClickOutside);
+            return () => document.removeEventListener('mousedown', handleClickOutside);
+        }
+    }, [showTagDropdown]);
+
+    const handleSuggestionClick = (suggestion: string) => {
+        const syntheticEvent = {
+            target: {
+                name: 'description',
+                value: suggestion
+            }
+        } as React.ChangeEvent<HTMLInputElement>;
+        handleFormChange(syntheticEvent);
+        setShowSuggestions(false);
+    };
+
+    const handleTagSelect = (tag: string) => {
+        const syntheticEvent = {
+            target: {
+                name: 'tag',
+                value: tag
+            }
+        } as React.ChangeEvent<HTMLInputElement>;
+        handleFormChange(syntheticEvent);
+        setShowTagDropdown(false);
+        setTagSearchText('');
+    };
+
+    const handleTagInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setTagSearchText(e.target.value);
+        handleFormChange(e);
+    };
+
+    const handleAddCustomTag = () => {
+        if (tagSearchText.trim().length > 0) {
+            handleTagSelect(tagSearchText.trim());
+        }
+    };
     return (
         <div className="p-4 bg-white rounded-xl shadow-lg">
             <h2 className="text-2xl font-bold mb-6 text-gray-800 flex items-center">
@@ -254,7 +357,7 @@ const AddExpenseView: React.FC<{
                 </div>
 
                 {/* Description */}
-                <div>
+                <div className="relative">
                     <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="description">Description (Why)</label>
                     <input
                         type="text"
@@ -262,32 +365,95 @@ const AddExpenseView: React.FC<{
                         name="description"
                         value={form.description}
                         onChange={handleFormChange}
+                        onFocus={() => form.description.trim().length > 0 && setShowSuggestions(true)}
+                        onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                        ref={descriptionInputRef}
                         required
                         className="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 transition duration-150"
                         placeholder="e.g., Groceries at Whole Foods"
+                        autoComplete="off"
                     />
+                    {showSuggestions && filteredSuggestions.length > 0 && (
+                        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                            {filteredSuggestions.slice(0, 10).map((suggestion, index) => (
+                                <button
+                                    key={index}
+                                    type="button"
+                                    onClick={() => handleSuggestionClick(suggestion)}
+                                    className="w-full text-left px-4 py-2 hover:bg-indigo-50 transition duration-150 text-sm text-gray-700 border-b border-gray-100 last:border-b-0"
+                                >
+                                    {suggestion}
+                                </button>
+                            ))}
+                        </div>
+                    )}
                 </div>
 
                 {/* Tag */}
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="tag">Category Tag</label>
-                    <div className="relative">
-                        <Tag className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-                        <select
+                    <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="tag">
+                        Category Tag
+                        <span className="text-xs text-gray-500 ml-2">(Click to change or type custom)</span>
+                    </label>
+                    <div className="relative" ref={tagInputRef}>
+                        <Tag className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none z-10" />
+                        <div
+                            className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus-within:ring-indigo-500 focus-within:border-indigo-500 transition duration-150 bg-white cursor-pointer flex items-center justify-between"
+                            onClick={() => setShowTagDropdown(!showTagDropdown)}
+                        >
+                            <span className={form.tag ? "text-gray-800" : "text-gray-400"}>
+                                {form.tag || "Select a tag"}
+                            </span>
+                            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
+                            </svg>
+                        </div>
+                        <input
+                            type="hidden"
                             id="tag"
                             name="tag"
                             value={form.tag}
-                            onChange={handleFormChange}
                             required
-                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 appearance-none transition duration-150"
-                        >
-                            {TAGS.map(t => (
-                                <option key={t} value={t}>{t}</option>
-                            ))}
-                        </select>
-                        <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
-                            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
-                        </div>
+                        />
+                        {showTagDropdown && (
+                            <div className="absolute z-20 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-64 overflow-hidden flex flex-col">
+                                {/* Search Input */}
+                                <div className="p-2 border-b border-gray-200">
+                                    <input
+                                        type="text"
+                                        value={tagSearchText}
+                                        onChange={handleTagInputChange}
+                                        placeholder="Search or type custom tag..."
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                        autoFocus
+                                    />
+                                </div>
+                                {/* Tag List */}
+                                <div className="overflow-y-auto max-h-48">
+                                    {filteredTags.map((tag) => (
+                                        <button
+                                            key={tag}
+                                            type="button"
+                                            onClick={() => handleTagSelect(tag)}
+                                            className={`w-full text-left px-4 py-2 hover:bg-indigo-50 transition duration-150 text-sm border-b border-gray-100 last:border-b-0 ${
+                                                form.tag === tag ? 'bg-indigo-100 font-semibold text-indigo-700' : 'text-gray-700'
+                                            }`}
+                                        >
+                                            {tag}
+                                        </button>
+                                    ))}
+                                    {tagSearchText && !filteredTags.includes(tagSearchText) && (
+                                        <button
+                                            type="button"
+                                            onClick={handleAddCustomTag}
+                                            className="w-full text-left px-4 py-2 bg-green-50 hover:bg-green-100 transition duration-150 text-sm text-green-700 font-medium border-t-2 border-green-200"
+                                        >
+                                            + Add "{tagSearchText}" as new tag
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
                 
@@ -459,7 +625,7 @@ const App = () => {
     // List view filtering and infinite scroll states
     const [visibleCount, setVisibleCount] = useState(30);
     const [selectedMonths, setSelectedMonths] = useState<string[]>([`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`]);
-    const [filterMode, setFilterMode] = useState<'current' | 'selected' | 'custom' | 'all'>('all');
+    const [filterMode, setFilterMode] = useState<'current' | 'selected' | 'custom' | 'all'>('current');
     const [customStartDate, setCustomStartDate] = useState('');
     const [customEndDate, setCustomEndDate] = useState('');
 
@@ -478,6 +644,13 @@ const App = () => {
     const allExpenses = useMemo(() => {
         return [...expenses, ...pendingExpenses].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
     }, [expenses, pendingExpenses]);
+
+    // Get all available tags (default + custom from expenses)
+    const allAvailableTags = useMemo(() => {
+        const customTags = new Set(allExpenses.map(e => e.tag));
+        const combined = new Set([...TAGS, ...Array.from(customTags)]);
+        return Array.from(combined).sort();
+    }, [allExpenses]);
 
     // Filtered expenses for list view
     const listViewExpenses = useMemo(() => {
@@ -1109,7 +1282,7 @@ const App = () => {
                     <div className="pt-2 border-t border-gray-200">
                         <label className="block text-xs text-gray-600 mb-2">Filter by Tags</label>
                         <div className="flex gap-2 flex-wrap">
-                            {TAGS.map(tag => {
+                            {allAvailableTags.map(tag => {
                                 const tagColor = {
                                     'Shopping': 'bg-pink-100 text-pink-700 border-pink-300',
                                     'Food': 'bg-green-100 text-green-700 border-green-300',
@@ -1784,6 +1957,8 @@ const App = () => {
                             isOnline={isOnline}
                             setView={setView}
                             currency={currency}
+                            expenses={allExpenses}
+                            availableTags={allAvailableTags}
                         />
                     )}
                     {view === 'stats' && StatsView()}
