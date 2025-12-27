@@ -546,6 +546,7 @@ const App = () => {
               handleEditExpense={handleEditExpense}
               currency={currency}
               isOnline={isOnline}
+              allExpenses={allExpenses}
             />
           )}
 
