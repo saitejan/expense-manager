@@ -49,6 +49,7 @@ import { SettingsView } from './views/SettingsView';
 
 // Components
 import { PWAInstallPrompt } from './components/PWAInstallPrompt';
+import { DonationPrompt } from './components/common/DonationPrompt';
 
 const App = () => {
   const isOnline = useOnlineStatus();
@@ -553,6 +554,14 @@ const App = () => {
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex flex-col">
         {/* PWA Install Prompt */}
         <PWAInstallPrompt />
+
+        {/* Donation Prompt */}
+        <DonationPrompt
+          userId={user?.uid || null}
+          isAuthenticated={isAuthenticated}
+          totalTransactions={allExpenses.length}
+          db={db}
+        />
 
         {/* Header */}
         <header className="bg-white shadow-sm p-4 sticky top-0 z-10">

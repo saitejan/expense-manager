@@ -7,6 +7,7 @@ export * from './tags';
 export * from './csv';
 export * from './firebase';
 export * from './currencies';
+export * from './donation';
 
 // UI Constants
 export const PAGINATION_SIZE = 30;

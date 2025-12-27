@@ -65,6 +65,13 @@
                     }
                 }
             }
+        },
+        "donationExclusions": {
+            ".read": "auth != null",
+            ".write": false,
+            "$uid": {
+                ".validate": "newData.isBoolean()"
+            }
         }
     }
 }

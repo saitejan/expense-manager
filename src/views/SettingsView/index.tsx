@@ -7,6 +7,8 @@ import { Settings as SettingsIcon, User, LogOut, Cloud, Download, Upload, AlertT
 import type { Expense, ViewType } from '../../types';
 import { showModal } from '../../utils';
 import { saveAllExpensesToLocalStorage } from '../../services/localStorage';
+import { DonationSection } from '../../components/common/DonationSection';
+import { DONATION_CONFIG } from '../../constants/donation';
 
 interface SettingsViewProps {
   user: any;
@@ -122,6 +124,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </p>
           </div>
         </div>
+
+        {/* Donation Section */}
+        <DonationSection
+          upiId={DONATION_CONFIG.UPI_ID}
+          upiName={DONATION_CONFIG.UPI_NAME}
+        />
 
         {/* Sync & Export Settings */}
         <div className="border-b pb-6 border-gray-100">
