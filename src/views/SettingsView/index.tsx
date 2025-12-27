@@ -31,6 +31,7 @@ interface SettingsViewProps {
   setPendingExpenses: React.Dispatch<React.SetStateAction<Expense[]>>;
   setView: React.Dispatch<React.SetStateAction<ViewType>>;
   handleDeleteAllData: () => void;
+  exportToGoogleSheets: () => Promise<void>;
 }
 
 /**
@@ -60,6 +61,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setPendingExpenses,
   setView,
   handleDeleteAllData,
+  exportToGoogleSheets,
 }) => {
   return (
     <div className="p-4 bg-white rounded-xl shadow-lg">
@@ -154,16 +156,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               disabled={!isAuthenticated}
             />
             <p className="text-xs text-gray-500 mt-1">
-              URL for manual export to Google Sheets. Requires sign-in.
+              URL for manual export to Google Sheets. Requires sign-in and deployed Apps Script.
             </p>
             <button
-              onClick={() => showModal("Not Implemented", "The Google Sheets Export function is not implemented in this version, but the URL is saved.")}
-              className="mt-2 flex items-center px-4 py-2 text-sm font-semibold text-white bg-green-600 rounded-lg shadow-md hover:bg-green-700 transition duration-150 disabled:opacity-50 w-full"
-              disabled={!isAuthenticated || !isOnline || allExpenses.length === 0}
+              onClick={exportToGoogleSheets}
+              className="mt-2 flex items-center px-4 py-2 text-sm font-semibold text-white bg-green-600 rounded-lg shadow-md hover:bg-green-700 transition duration-150 disabled:opacity-50 w-full justify-center"
+              disabled={!isAuthenticated || !isOnline || allExpenses.length === 0 || !exportUrl || loading}
             >
               <Download className="w-4 h-4 mr-2" />
-              Manual Export to Sheets
+              Export to Google Sheets ({allExpenses.length})
             </button>
+            {(!exportUrl || exportUrl.trim() === '') && (
+              <p className="text-xs text-amber-600 mt-2">
+                ⚠️ Please set the Web App URL above first
+              </p>
+            )}
           </div>
         </div>
 

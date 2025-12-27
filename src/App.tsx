@@ -310,6 +310,64 @@ const App = () => {
     showModal('Backup Successful', `${allExpenses.length} expenses downloaded as CSV.`);
   };
 
+  const exportToGoogleSheets = async () => {
+    if (!exportUrl || exportUrl.trim() === '') {
+      showModal('Configuration Required', 'Please set your Google Sheets Web App URL in the settings first.');
+      return;
+    }
+
+    if (allExpenses.length === 0) {
+      showModal('No Data', 'There are no expenses to export.');
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      // Prepare data for Google Sheets
+      const data = allExpenses.map(expense => ({
+        id: expense.id,
+        userId: expense.userId,
+        amount: expense.amount,
+        currency: expense.currency,
+        description: expense.description,
+        tag: expense.tag,
+        timestamp: expense.timestamp.toISOString(),
+        dateStr: expense.dateStr,
+        timeStr: expense.timeStr,
+        syncStatus: expense.syncStatus
+      }));
+
+      // Send to Google Sheets Web App
+      await fetch(exportUrl, {
+        method: 'POST',
+        mode: 'no-cors', // Google Apps Script requires no-cors
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'export',
+          expenses: data
+        })
+      });
+
+      // Note: With no-cors mode, we can't read the response
+      // We'll assume success if no error was thrown
+      showModal(
+        'Export Initiated',
+        `Successfully sent ${allExpenses.length} expenses to Google Sheets.\n\nPlease check your spreadsheet to verify the data was imported.`
+      );
+    } catch (error: any) {
+      console.error('Error exporting to Google Sheets:', error);
+      showModal(
+        'Export Failed',
+        `Failed to export to Google Sheets: ${error.message}\n\nPlease verify your Web App URL is correct and the script is deployed.`
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const parseCsvAndRestore = () => {
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
@@ -515,6 +573,7 @@ const App = () => {
               setPendingExpenses={setPendingExpenses}
               setView={setView}
               handleDeleteAllData={handleDeleteAllData}
+              exportToGoogleSheets={exportToGoogleSheets}
             />
           )}
         </main>
