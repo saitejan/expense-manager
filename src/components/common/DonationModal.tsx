@@ -21,14 +21,23 @@ export const DonationModal: React.FC<DonationModalProps> = ({
 }) => {
     const [showQrCode, setShowQrCode] = useState(false);
     const [copied, setCopied] = useState(false);
+    const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
+
 
     const generateUpiUrl = () => {
+        // const params = new URLSearchParams({
+        //     pa: DONATION_CONFIG.UPI_ID,
+        //     pn: DONATION_CONFIG.UPI_NAME,
+        //     cu: 'INR',
+        //     am: DONATION_PROMPT_CONFIG.MIN_AMOUNT.toString()
+        // });
         const params = new URLSearchParams({
             pa: DONATION_CONFIG.UPI_ID,
-            pn: DONATION_CONFIG.UPI_NAME,
+            pn: DONATION_CONFIG.UPI_NAME.replace(/[^a-zA-Z0-9 ]/g, ''),
             cu: 'INR',
-            am: DONATION_PROMPT_CONFIG.MIN_AMOUNT.toString()
+            tn: 'Donation'
         });
+        if (DONATION_PROMPT_CONFIG.MIN_AMOUNT) params.append('am', String(DONATION_PROMPT_CONFIG.MIN_AMOUNT));
         return `upi://pay?${params.toString()}`;
     };
 
@@ -130,13 +139,14 @@ export const DonationModal: React.FC<DonationModalProps> = ({
                                 Show QR Code
                             </button>
 
-                            <button
-                                onClick={handleUpiPayment}
-                                className="flex items-center justify-center px-6 py-3 text-sm font-semibold text-white bg-gradient-to-r from-indigo-500 to-blue-600 rounded-lg shadow-md hover:from-indigo-600 hover:to-blue-700 transition duration-150"
-                            >
-                                <Smartphone className="w-5 h-5 mr-2" />
-                                Pay via UPI App
-                            </button>
+                            {isMobile && (
+                                <button
+                                    onClick={handleUpiPayment}
+                                    className="flex items-center justify-center px-6 py-3 text-sm font-semibold text-white bg-gradient-to-r from-indigo-500 to-blue-600 rounded-lg shadow-md hover:from-indigo-600 hover:to-blue-700 transition duration-150"
+                                >
+                                    <Smartphone className="w-5 h-5 mr-2" />
+                                    Pay via UPI App
+                                </button>)}
 
                             {showPromptMessage && (
                                 <button
