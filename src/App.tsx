@@ -47,6 +47,9 @@ import { ListView } from './views/ListView';
 import { StatsView } from './views/StatsView';
 import { SettingsView } from './views/SettingsView';
 
+// Components
+import { PWAInstallPrompt } from './components/PWAInstallPrompt';
+
 const App = () => {
   const isOnline = useOnlineStatus();
 
@@ -548,6 +551,9 @@ const App = () => {
 
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex flex-col">
+        {/* PWA Install Prompt */}
+        <PWAInstallPrompt />
+
         {/* Header */}
         <header className="bg-white shadow-sm p-4 sticky top-0 z-10">
           <div className="max-w-4xl mx-auto flex justify-between items-center">
