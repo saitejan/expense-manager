@@ -1,66 +1,106 @@
 # ExpenseManager
 
-ExpenseManager is a small React + TypeScript + Vite single-page app for tracking personal expenses. It works in two modes:
+A modern, feature-rich expense tracking Progressive Web App built with React, TypeScript, and Vite. Track your expenses seamlessly across devices with optional cloud sync, multi-currency support, and powerful analytics.
 
-1. **Local-only mode**: No Firebase needed. Add, view, edit, delete expenses, view stats, and export/import CSV — all stored in browser localStorage.
-2. **Cloud sync mode**: Optional Firebase integration with Google sign-in for cloud backup and multi-device sync.
+![Landing Page](./src/assets/demo_images/landing_page.png)
 
-**Key features**
-- **No sign-in required**: Start using immediately — all expenses saved to localStorage by default.
-- **Optional cloud sync**: Sign in with Google to enable Firebase Realtime Database sync. Pending offline changes auto-sync when back online.
-- **CSV import / export**: Export all expenses to CSV and import back for backup/restore.
-- **Tags & categories**: Predefined tags for fast categorization (Shopping, Food, Travel, Hospital, Wife, Baby, Me, Bills, Other).
-- **Simple UI**: Add, list, delete expenses; view pending sync status; monthly/yearly statistics; online/offline status indicator.
-- **Offline support**: Full functionality in offline mode with automatic sync when reconnected.
+## ✨ Features
 
-**Two Usage Modes**
+### 🚀 Core Capabilities
+- **🔓 No sign-in required**: Start tracking immediately — all data stored locally in your browser
+- **☁️ Optional cloud sync**: Sign in with Google for Firebase backup and multi-device synchronization
+- **💱 Multi-currency support**: Track expenses in 15+ currencies (INR, USD, EUR, GBP, JPY, and more)
+- **📊 Live exchange rates**: Real-time currency conversion powered by ExchangeRate-API
+- **📱 Progressive Web App**: Install on any device for a native app experience
+- **🔌 Full offline support**: Work seamlessly offline with automatic sync when reconnected
+- **📈 Advanced analytics**: Interactive trend charts with daily, weekly, and monthly views
+- **📤 Multiple export options**: Export to CSV or Google Sheets
+- **🏷️ Smart categorization**: Predefined tags for quick expense organization
 
-| Feature | Local-Only | Cloud Sync |
-|---|---|---|
-| Add/view/delete expenses | ✅ | ✅ |
-| Statistics & reports | ✅ | ✅ |
+### 💰 Multi-Currency Features
+- Support for 15 popular currencies with proper symbols and formatting
+- Live exchange rate conversion for accurate cross-currency totals
+- Per-expense currency selection
+- Statistics view with currency conversion toggle
+- Automatic rate updates when online
+
+### 📊 Statistics & Analytics
+- **Yearly overview**: Grid view of all 12 months with total spending per month
+- **Monthly details**: Detailed expense list for selected month
+- **Trend charts**: Interactive visualizations with:
+  - Time period selection (7 days, 30 days, 90 days, 1 year, all time)
+  - Chart type toggle (bar chart, line chart, area chart)
+  - Daily, weekly, and monthly aggregation views
+  - Hover tooltips with detailed breakdowns
+- **Currency conversion**: View statistics in any supported currency with live rates
+
+### 🎨 Modern UI/UX
+- Clean, responsive design that works on all devices
+- Smooth animations and transitions
+- Tag-based color coding for visual expense categorization
+- Online/offline status indicator
+- Pending sync status badges
+- Dark mode support (system preference)
+
+## 📸 Screenshots
+
+### Home Page
+![Home Page - Track your expenses with an intuitive interface](./src/assets/demo_images/home_page.png)
+
+### Add Expense
+![Add Expense - Quick entry with multi-currency support](./src/assets/demo_images/add_expense.png)
+
+### Expenses List
+![Expenses List - View and manage all your transactions](./src/assets/demo_images/expenses_list.png)
+
+### Statistics Overview
+![Statistics - Comprehensive yearly and monthly overview](./src/assets/demo_images/stats.png)
+
+### Trend Charts
+![Trend Charts - Visualize spending patterns over time](./src/assets/demo_images/trends_1.png)
+
+### Advanced Analytics
+![Advanced Analytics - Multiple chart types and time periods](./src/assets/demo_images/trends_2.png)
+
+### Settings
+![Settings - Customize currency and manage your data](./src/assets/demo_images/settings.png)
+
+## 🎯 Usage Modes
+
+| Feature | Local-Only Mode | Cloud Sync Mode |
+|---------|----------------|-----------------|
+| Add/view/edit/delete expenses | ✅ | ✅ |
+| Multi-currency support | ✅ | ✅ |
+| Live exchange rates | ✅ | ✅ |
+| Statistics & trend charts | ✅ | ✅ |
 | CSV export/import | ✅ | ✅ |
+| Google Sheets export | ✅ | ✅ |
+| PWA installation | ✅ | ✅ |
 | Multi-device access | ❌ | ✅ |
 | Cloud backup | ❌ | ✅ |
 | Google sign-in | ❌ | ✅ |
-| No setup required | ✅ | ❌ (Firebase config needed) |
+| Setup required | ❌ | ✅ (Firebase config) |
 
-**Quickstart**
+## 🚀 Quick Start
 
-1. Create a `.env.local` file from `.env.example` and fill in your Firebase credentials:
-
-```bash
-cp .env.example .env.local
-# Edit .env.local with your Firebase values
-```
-
-2. Install dependencies
+### 1. Clone and Install
 
 ```bash
 cd ExpenseManager/expense-manager
 npm install
 ```
 
-3. Start the dev server
+### 2. Configure Environment (Optional for Cloud Sync)
+
+Create a `.env.local` file from the template:
 
 ```bash
-npm run dev
+cp .env.example .env.local
 ```
 
-4. Build for production
+Edit `.env.local` with your Firebase credentials:
 
-```bash
-npm run build
-npm run preview
-```
-
-Run the app and open the printed local dev URL (usually `http://localhost:5173`).
-
-**Environment Variables**
-
-This app uses Vite's environment variables (prefixed with `VITE_`). Create a `.env.local` file with these variables:
-
-```
+```env
 VITE_FIREBASE_API_KEY=your_api_key
 VITE_FIREBASE_AUTH_DOMAIN=your_auth_domain
 VITE_FIREBASE_DATABASE_URL=your_database_url
@@ -70,28 +110,110 @@ VITE_FIREBASE_MESSAGING_SENDER_ID=your_messaging_sender_id
 VITE_FIREBASE_APP_ID=your_app_id
 ```
 
-See `.env.example` for a template. **Do not commit `.env.local`** — it contains sensitive credentials.
+> **Note**: The app works perfectly without Firebase configuration in local-only mode!
 
-**Firebase setup (optional)**
+### 3. Run Development Server
 
-- Create a Firebase project and enable **Realtime Database** (rule set to allow authenticated writes) and **Authentication** with the **Google** provider.
-- Copy your Firebase config values from **Project Settings > General** in the Firebase Console.
-- Add these values to `.env.local` (for local dev) or configure them in your deployment pipeline (see section below).
-- The app stores cloud data under `users/{uid}/expenses` in the Realtime Database.
+```bash
+npm run dev
+```
 
-Security note: Do not commit `.env.local` with production Firebase config. Use environment secrets in your CI/CD pipeline.
+Open the printed URL (usually `http://localhost:5173`) in your browser.
 
-**GitHub Actions & gh-pages Deployment**
+### 4. Build for Production
 
-To deploy to GitHub Pages with Firebase support, create a `.github/workflows/deploy.yml`:
+```bash
+npm run build
+npm run preview
+```
+
+## 🔧 Firebase Setup (Optional)
+
+To enable cloud sync and multi-device access:
+
+1. Create a [Firebase project](https://console.firebase.google.com/)
+2. Enable **Realtime Database** with these security rules:
+
+```json
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        ".read": "$uid === auth.uid",
+        ".write": "$uid === auth.uid"
+      }
+    }
+  }
+}
+```
+
+3. Enable **Authentication** with the **Google** provider
+4. Copy your Firebase config from **Project Settings > General**
+5. Add the values to `.env.local`
+
+Data is stored under `users/{uid}/expenses` in the Realtime Database.
+
+## 📦 Supported Currencies
+
+The app supports 15 popular currencies with live exchange rates:
+
+- 🇮🇳 INR (Indian Rupee)
+- 🇺🇸 USD (US Dollar)
+- 🇪🇺 EUR (Euro)
+- 🇬🇧 GBP (British Pound)
+- 🇯🇵 JPY (Japanese Yen)
+- 🇨🇳 CNY (Chinese Yuan)
+- 🇦🇺 AUD (Australian Dollar)
+- 🇨🇦 CAD (Canadian Dollar)
+- 🇨🇭 CHF (Swiss Franc)
+- 🇸🇬 SGD (Singapore Dollar)
+- 🇦🇪 AED (UAE Dirham)
+- 🇸🇦 SAR (Saudi Riyal)
+- 🇰🇷 KRW (South Korean Won)
+- 🇧🇷 BRL (Brazilian Real)
+- 🇲🇽 MXN (Mexican Peso)
+
+Exchange rates are fetched from [ExchangeRate-API](https://www.exchangerate-api.com/) and cached for 24 hours.
+
+## 🏷️ Expense Categories
+
+Predefined tags for quick categorization:
+
+- 🛍️ Shopping
+- 🍔 Food
+- ✈️ Travel
+- 🏥 Hospital
+- 💝 Wife
+- 👶 Baby
+- 👤 Me
+- 📄 Bills
+- 📌 Other
+
+Each tag has a unique color for easy visual identification.
+
+## 📤 Export Options
+
+### CSV Export
+- Export all expenses to CSV format
+- Import CSV files to restore or migrate data
+- Format: `id,userId,amount,currency,description,tag,timestamp,dateStr,timeStr,syncStatus`
+
+### Google Sheets Export
+- One-click export to Google Sheets
+- Automatic formatting with headers
+- Opens in a new tab for immediate editing
+
+## 🌐 Deployment
+
+### GitHub Pages with GitHub Actions
+
+Create `.github/workflows/deploy.yml`:
 
 ```yaml
 name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main]
-  pull_request:
     branches: [main]
 
 jobs:
@@ -126,56 +248,111 @@ jobs:
           publish_dir: ExpenseManager/expense-manager/dist
 ```
 
-**Setting up GitHub Secrets**
+**Add GitHub Secrets**: Go to **Settings > Secrets and variables > Actions** and add all `FIREBASE_*` variables.
 
-1. Go to your repository on GitHub.
-2. Navigate to **Settings > Secrets and variables > Actions**.
-3. Click **New repository secret** and add each Firebase variable:
-   - `FIREBASE_API_KEY`
-   - `FIREBASE_AUTH_DOMAIN`
-   - `FIREBASE_DATABASE_URL`
-   - `FIREBASE_PROJECT_ID`
-   - `FIREBASE_STORAGE_BUCKET`
-   - `FIREBASE_MESSAGING_SENDER_ID`
-   - `FIREBASE_APP_ID`
-
-4. Push to `main` branch — the workflow will build and deploy automatically.
-
-**Deploying with gh-pages CLI locally**
-
-To deploy manually using the `gh-pages` CLI:
+### Manual Deployment with gh-pages
 
 ```bash
-# Install gh-pages globally (or use npx)
-npm install -g gh-pages
-
-# Build the app
-cd ExpenseManager/expense-manager
 npm run build
-
-# Deploy to gh-pages branch
-gh-pages -d dist --remote origin
-
-# Or with npx (no global install)
 npx gh-pages -d dist --remote origin
 ```
 
-This pushes the `dist/` folder to the `gh-pages` branch. Configure your repo's GitHub Pages settings to serve from that branch.
+Configure GitHub Pages to serve from the `gh-pages` branch.
 
-**App behavior & data model**
-- Expense model fields: `id`, `userId`, `amount`, `currency`, `description`, `tag`, `timestamp`, `dateStr`, `timeStr`, `syncStatus` (`synced`|`pending`).
-- Local storage key: `moneytrack_local_expenses`.
-- When offline, added expenses are saved locally with `syncStatus: 'pending'`. They are uploaded to Firebase and marked `synced` when online and authenticated.
+## 🗂️ Project Structure
 
-**CSV format**
-- Header: `id,userId,amount,currency,description,tag,timestamp,dateStr,timeStr,syncStatus`
-- Use the app `Export` / `Import` buttons to backup and restore data.
+```
+expense-manager/
+├── src/
+│   ├── App.tsx                 # Main application component
+│   ├── components/             # Reusable components
+│   │   ├── charts/            # Chart components (trend visualization)
+│   │   ├── common/            # Common UI components
+│   │   ├── layout/            # Layout components
+│   │   └── PWAInstallPrompt.tsx
+│   ├── views/                 # Main view components
+│   │   ├── AddExpenseView/    # Add/edit expense form
+│   │   ├── AuthView/          # Authentication view
+│   │   ├── ListView/          # Expense list view
+│   │   ├── SettingsView/      # Settings and data management
+│   │   └── StatsView/         # Statistics and analytics
+│   ├── services/              # Business logic and API services
+│   │   ├── currencyService.ts # Exchange rate fetching
+│   │   ├── expenseService.ts  # Expense CRUD operations
+│   │   ├── firebaseService.ts # Firebase integration
+│   │   └── storageService.ts  # LocalStorage management
+│   ├── hooks/                 # Custom React hooks
+│   ├── utils/                 # Utility functions
+│   ├── constants/             # App constants (currencies, tags, etc.)
+│   ├── types/                 # TypeScript type definitions
+│   └── assets/                # Images and static assets
+├── public/                    # Static files
+└── dist/                      # Production build output
+```
 
-**Project structure (high level)**
-- `src/App.tsx`: Main application file — UI, Firebase integration, offline sync, import/export, and components.
-- `src/`: other components and styles (if present).
-- `public/`: static assets.
+## 💾 Data Model
 
-**Contributing / Running locally**
-- Make changes and run `npm run dev` to test locally.
-- Optionally create a Firebase test project for syncing.
+### Expense Object
+
+```typescript
+interface Expense {
+  id: string;              // Unique identifier
+  userId: string;          // User ID (for cloud sync)
+  amount: number;          // Expense amount
+  currency: string;        // Currency code (e.g., 'USD', 'INR')
+  description: string;     // Expense description
+  tag: string;            // Category tag
+  timestamp: number;       // Unix timestamp
+  dateStr: string;        // Formatted date (YYYY-MM-DD)
+  timeStr: string;        // Formatted time (HH:MM)
+  syncStatus: 'synced' | 'pending';  // Cloud sync status
+}
+```
+
+### Storage
+
+- **LocalStorage key**: `moneytrack_local_expenses`
+- **Firebase path**: `users/{uid}/expenses/{expenseId}`
+- **Exchange rates cache**: `expense_exchange_rates` (24-hour TTL)
+
+## 🔄 Offline Sync Behavior
+
+1. **Offline mode**: All operations work normally, expenses marked as `pending`
+2. **Coming online**: Automatic sync of pending expenses to Firebase
+3. **Conflict resolution**: Local changes take precedence
+4. **Status indicator**: Visual feedback for online/offline state
+
+## 🛠️ Tech Stack
+
+- **Frontend**: React 18 + TypeScript
+- **Build tool**: Vite
+- **Styling**: Tailwind CSS
+- **Charts**: Recharts
+- **Backend**: Firebase Realtime Database
+- **Auth**: Firebase Authentication (Google)
+- **PWA**: Vite PWA Plugin
+- **Icons**: Lucide React
+- **Currency API**: ExchangeRate-API
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/amazing-feature`
+3. Make your changes and test locally with `npm run dev`
+4. Commit your changes: `git commit -m 'Add amazing feature'`
+5. Push to the branch: `git push origin feature/amazing-feature`
+6. Open a Pull Request
+
+## 📝 License
+
+This project is open source and available for personal use.
+
+## 🙏 Acknowledgments
+
+- Exchange rates provided by [ExchangeRate-API](https://www.exchangerate-api.com/)
+- Icons by [Lucide](https://lucide.dev/)
+- Charts powered by [Recharts](https://recharts.org/)
+
+---
+
+**Made with ❤️ for better expense tracking**
