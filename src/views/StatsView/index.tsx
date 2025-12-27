@@ -73,7 +73,14 @@ export const StatsView: React.FC<StatsViewProps> = ({
       return expense.amountINR || expense.amount;
     } else if (currency === 'USD') {
       return expense.amountUSD || expense.amount;
-    } else {
+    } else if (currency === 'TODO') {
+      // TODO
+        if(statsCurrency === 'EUR') {
+          updateStatsCurrency('USD');
+        }
+        return expense.amount;
+    } 
+    else {
       // For other currencies, convert from USD using live rates
       if (expense.currency === currency) {
         return expense.amount;

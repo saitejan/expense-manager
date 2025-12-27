@@ -31,8 +31,8 @@ import {
   syncPendingExpensesToFirebase as serviceSyncPending,
   syncRestoredCsvToFirebase as serviceSyncCsvToFirebase,
   deleteAllExpensesFromFirebase,
-  migrateExpensesToDefaultCurrency,
-  migrateExpensesToBaseAmounts,
+  // migrateExpensesToDefaultCurrency,
+  // migrateExpensesToBaseAmounts,
 } from './services/firebase';
 import { loadExpensesFromLocalStorage, saveAllExpensesToLocalStorage } from './services/localStorage';
 import { convertToCsv, parseCsv } from './services/csv';
@@ -276,72 +276,72 @@ const App = () => {
   }, [db, user, isOnline, isAuthenticated, handleSignOut]);
 
   // Migration: Set default currency for existing expenses
-  useEffect(() => {
-    const runMigration = async () => {
-      if (!db || !user || !isOnline || !isAuthenticated) {
-        return;
-      }
+  // useEffect(() => {
+  //   const runMigration = async () => {
+  //     if (!db || !user || !isOnline || !isAuthenticated) {
+  //       return;
+  //     }
 
-      const migrationKey = `migration_currency_${user.uid}`;
-      const migrationCompleted = localStorage.getItem(migrationKey);
+  //     const migrationKey = `migration_currency_${user.uid}`;
+  //     const migrationCompleted = localStorage.getItem(migrationKey);
 
-      if (migrationCompleted) {
-        return; // Migration already completed for this user
-      }
+  //     if (migrationCompleted) {
+  //       return; // Migration already completed for this user
+  //     }
 
-      try {
-        console.log('Running currency migration for existing expenses...');
-        const migratedCount = await migrateExpensesToDefaultCurrency(db, user.uid, 'INR');
+  //     try {
+  //       console.log('Running currency migration for existing expenses...');
+  //       const migratedCount = await migrateExpensesToDefaultCurrency(db, user.uid, 'INR');
 
-        if (migratedCount > 0) {
-          console.log(`Migration completed: ${migratedCount} expenses updated with INR currency`);
-          showModal('Migration Complete', `${migratedCount} existing expenses have been updated with INR currency.`);
-        }
+  //       if (migratedCount > 0) {
+  //         console.log(`Migration completed: ${migratedCount} expenses updated with INR currency`);
+  //         showModal('Migration Complete', `${migratedCount} existing expenses have been updated with INR currency.`);
+  //       }
 
-        // Mark migration as completed
-        localStorage.setItem(migrationKey, 'true');
-      } catch (error) {
-        console.error('Error during currency migration:', error);
-      }
-    };
+  //       // Mark migration as completed
+  //       localStorage.setItem(migrationKey, 'true');
+  //     } catch (error) {
+  //       console.error('Error during currency migration:', error);
+  //     }
+  //   };
 
-    // runMigration();
-  }, [db, user, isOnline, isAuthenticated]);
+  //   runMigration();
+  // }, [db, user, isOnline, isAuthenticated]);
 
   // Migration: Add amountINR and amountUSD to existing expenses
-  useEffect(() => {
-    const runBaseAmountsMigration = async () => {
-      if (!db || !user || !isOnline || !isAuthenticated) {
-        return;
-      }
+  // useEffect(() => {
+  //   const runBaseAmountsMigration = async () => {
+  //     if (!db || !user || !isOnline || !isAuthenticated) {
+  //       return;
+  //     }
 
-      const migrationKey = `migration_base_amounts_${user.uid}`;
-      const migrationCompleted = localStorage.getItem(migrationKey);
+  //     const migrationKey = `migration_base_amounts_${user.uid}`;
+  //     const migrationCompleted = localStorage.getItem(migrationKey);
 
-      if (migrationCompleted) {
-        return; // Migration already completed for this user
-      }
+  //     if (migrationCompleted) {
+  //       return; // Migration already completed for this user
+  //     }
 
-      try {
-        console.log('Running base amounts migration for existing expenses...');
-        const { getExchangeRates } = await import('./services/exchangeRate');
-        const rates = await getExchangeRates('stats');
-        const migratedCount = await migrateExpensesToBaseAmounts(db, user.uid, rates);
+  //     try {
+  //       console.log('Running base amounts migration for existing expenses...');
+  //       const { getExchangeRates } = await import('./services/exchangeRate');
+  //       const rates = await getExchangeRates('stats');
+  //       const migratedCount = await migrateExpensesToBaseAmounts(db, user.uid, rates);
 
-        if (migratedCount > 0) {
-          console.log(`Base amounts migration completed: ${migratedCount} expenses updated`);
-          showModal('Migration Complete', `${migratedCount} expenses have been updated with INR and USD amounts.`);
-        }
+  //       if (migratedCount > 0) {
+  //         console.log(`Base amounts migration completed: ${migratedCount} expenses updated`);
+  //         showModal('Migration Complete', `${migratedCount} expenses have been updated with INR and USD amounts.`);
+  //       }
 
-        // Mark migration as completed
-        localStorage.setItem(migrationKey, 'true');
-      } catch (error) {
-        console.error('Error during base amounts migration:', error);
-      }
-    };
+  //       // Mark migration as completed
+  //       localStorage.setItem(migrationKey, 'true');
+  //     } catch (error) {
+  //       console.error('Error during base amounts migration:', error);
+  //     }
+  //   };
 
-    runBaseAmountsMigration();
-  }, [db, user, isOnline, isAuthenticated]);
+  //   runBaseAmountsMigration();
+  // }, [db, user, isOnline, isAuthenticated]);
 
   // CSV Functions
   const syncRestoredCsvToFirebase = async (dataToSync: Expense[], userId: string) => {

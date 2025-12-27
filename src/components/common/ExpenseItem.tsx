@@ -75,7 +75,7 @@ export const ExpenseItem: React.FC<ExpenseItemProps> = ({
               <Save className="w-3 h-3 mr-1" /> Pending
             </span>
           )}
-          <span className="text-xs text-gray-500 font-medium">({expense.currency})</span>
+          <span className={`text-xs text-gray-500 font-medium ${expense.currency !== currency && 'text-red-500'}`}>({expense.currency})</span>
         </div>
       </div>
       <div className="flex items-center space-x-3 ml-4">
