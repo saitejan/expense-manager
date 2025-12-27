@@ -7,6 +7,8 @@ export const CSV_HEADERS = [
   'userId',
   'amount',
   'currency',
+  'amountINR',
+  'amountUSD',
   'description',
   'tag',
   'timestamp',

@@ -4,4 +4,18 @@
 
 export * from './initialization';
 export * from './auth';
-export * from './database';
+export {
+    getFirebaseDatabase,
+    addExpenseToFirebase,
+    updateExpenseInFirebase,
+    deleteExpenseFromFirebase,
+    syncPendingExpensesToFirebase,
+    syncRestoredCsvToFirebase,
+    subscribeToExpenses,
+    deleteAllExpensesFromFirebase,
+    migrateExpensesToDefaultCurrency,
+    getUserPreferences,
+    updateUserPreferences,
+    subscribeToUserPreferences,
+    migrateExpensesToBaseAmounts,
+} from './database';

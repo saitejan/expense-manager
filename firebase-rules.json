@@ -1,0 +1,70 @@
+{
+    "rules": {
+        "allowedUsers": {
+            ".read": "auth != null",
+            ".write": false,
+            "$uid": {
+                ".validate": "newData.isBoolean()"
+            }
+        },
+        "users": {
+            "$uid": {
+                ".read": "auth != null && auth.uid == $uid && root.child('allowedUsers').child(auth.uid).val() === true",
+                ".write": "auth != null && auth.uid == $uid && root.child('allowedUsers').child(auth.uid).val() === true",
+                "expenses": {
+                    "$expenseId": {
+                        ".validate": "newData.hasChildren(['userId', 'amount', 'currency', 'description', 'tag', 'timestamp', 'dateStr', 'timeStr'])",
+                        "userId": {
+                            ".validate": "newData.isString() && newData.val() == $uid"
+                        },
+                        "amount": {
+                            ".validate": "newData.isNumber() && newData.val() >= 0"
+                        },
+                        "currency": {
+                            ".validate": "newData.isString() && newData.val().length > 0"
+                        },
+                        "amountINR": {
+                            ".validate": "newData.isNumber() && newData.val() >= 0"
+                        },
+                        "amountUSD": {
+                            ".validate": "newData.isNumber() && newData.val() >= 0"
+                        },
+                        "description": {
+                            ".validate": "newData.isString()"
+                        },
+                        "tag": {
+                            ".validate": "newData.isString() && newData.val().length > 0"
+                        },
+                        "timestamp": {
+                            ".validate": "newData.isNumber() && newData.val() > 0"
+                        },
+                        "dateStr": {
+                            ".validate": "newData.isString()"
+                        },
+                        "timeStr": {
+                            ".validate": "newData.isString()"
+                        },
+                        "$other": {
+                            ".validate": false
+                        }
+                    }
+                },
+                "preferences": {
+                    ".validate": "newData.hasChildren()",
+                    "currency": {
+                        ".validate": "newData.isString() && newData.val().length > 0"
+                    },
+                    "exportUrl": {
+                        ".validate": "newData.isString()"
+                    },
+                    "statsCurrency": {
+                        ".validate": "newData.isString() && newData.val().length > 0"
+                    },
+                    "$other": {
+                        ".validate": false
+                    }
+                }
+            }
+        }
+    }
+}

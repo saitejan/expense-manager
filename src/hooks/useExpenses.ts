@@ -4,7 +4,7 @@
  */
 
 import { useState, useMemo, useCallback } from 'react';
-import type { Expense, FormState, FilterMode, AnnualTotal } from '../types';
+import type { Expense, FormState, FilterMode, AnnualTotal, ExchangeRates } from '../types';
 import { TAGS, PAGINATION_SIZE } from '../constants';
 import { timestampToDate } from '../utils';
 
@@ -24,6 +24,7 @@ interface UseExpensesParams {
   updateExpenseInFirebase: (db: any, userId: string, id: string, expense: any) => Promise<void>;
   deleteExpenseFromFirebase: (db: any, userId: string, id: string) => Promise<void>;
   showModal: (title: string, message: string, confirm?: boolean, onConfirm?: () => void) => void;
+  exchangeRates: ExchangeRates | null;
 }
 
 export const useExpenses = ({
@@ -42,6 +43,7 @@ export const useExpenses = ({
   updateExpenseInFirebase,
   deleteExpenseFromFirebase,
   showModal,
+  exchangeRates,
 }: UseExpensesParams) => {
   // Filter states
   const [filterYear, setFilterYear] = useState(new Date().getFullYear());
@@ -63,6 +65,7 @@ export const useExpenses = ({
     tag: TAGS[0],
     date: new Date().toISOString().substring(0, 10),
     time: new Date().toTimeString().substring(0, 5),
+    currency: currency,
   });
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
 
@@ -131,10 +134,30 @@ export const useExpenses = ({
     return filtered;
   }, [allExpenses, filterMode, selectedMonths, customStartDate, customEndDate, searchText, selectedTags]);
 
+  // Helper function to get amount in user's currency with live conversion
+  const getAmountInCurrency = useCallback((expense: Expense): number => {
+    if (currency === 'INR') {
+      return expense.amountINR || expense.amount;
+    } else if (currency === 'USD') {
+      return expense.amountUSD || expense.amount;
+    } else {
+      // For other currencies, convert from USD using live rates
+      if (expense.currency === currency) {
+        return expense.amount;
+      }
+      // Convert USD to target currency
+      if (exchangeRates && exchangeRates.rates[currency]) {
+        return (expense.amountUSD || expense.amount) * exchangeRates.rates[currency];
+      }
+      // Fallback to USD amount if no rate available
+      return expense.amountUSD || expense.amount;
+    }
+  }, [currency, exchangeRates]);
+
   // Computed: List view total
   const listViewTotal = useMemo(() => {
-    return listViewExpenses.reduce((sum, expense) => sum + expense.amount, 0);
-  }, [listViewExpenses]);
+    return listViewExpenses.reduce((sum, expense) => sum + getAmountInCurrency(expense), 0);
+  }, [listViewExpenses, getAmountInCurrency]);
 
   // Computed: Stats view filtered expenses
   const { filteredExpenses, monthlyTotal } = useMemo(() => {
@@ -143,10 +166,10 @@ export const useExpenses = ({
       return expenseDate.getMonth() === filterMonth && expenseDate.getFullYear() === filterYear;
     });
 
-    const total = filtered.reduce((sum, expense) => sum + expense.amount, 0);
+    const total = filtered.reduce((sum, expense) => sum + getAmountInCurrency(expense), 0);
 
     return { filteredExpenses: filtered, monthlyTotal: total };
-  }, [allExpenses, filterMonth, filterYear]);
+  }, [allExpenses, filterMonth, filterYear, getAmountInCurrency]);
 
   // Computed: Annual totals
   const annualTotals = useMemo<AnnualTotal[]>(() => {
@@ -163,12 +186,12 @@ export const useExpenses = ({
 
     currentYearExpenses.forEach(expense => {
       const month = timestampToDate(expense.timestamp).getMonth();
-      totals[month].total += expense.amount;
+      totals[month].total += getAmountInCurrency(expense);
       totals[month].count += 1;
     });
 
     return Object.values(totals);
-  }, [allExpenses, filterYear]);
+  }, [allExpenses, filterYear, getAmountInCurrency]);
 
   // Computed: Filter date string
   const filterDateString = useMemo(() => {
@@ -222,6 +245,7 @@ export const useExpenses = ({
       tag: TAGS[0],
       date: new Date().toISOString().substring(0, 10),
       time: new Date().toTimeString().substring(0, 5),
+      currency: currency,
     });
     setEditingExpenseId(null);
     setView('list');
@@ -231,7 +255,7 @@ export const useExpenses = ({
   const handleAddExpense = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const { amount, description, tag, date, time } = form;
+    const { amount, description, tag, date, time, currency: formCurrency } = form;
     const amountFloat = parseFloat(amount);
     const currentUserId = user?.uid || 'offline-user';
 
@@ -243,6 +267,27 @@ export const useExpenses = ({
     try {
       setLoading(true);
       const dateTime = new Date(`${date}T${time}:00`);
+
+      // Fetch exchange rates for conversion
+      const { getExchangeRates, convertToBaseAmounts } = await import('../services/exchangeRate');
+      let rates;
+      try {
+        rates = await getExchangeRates('creation');
+      } catch (rateError: any) {
+        showModal(
+          "Exchange Rate Error",
+          `Unable to fetch exchange rates: ${rateError.message}\n\nPlease check your internet connection and try again.`
+        );
+        setLoading(false);
+        return;
+      }
+
+      // Calculate base amounts
+      const { amountINR, amountUSD } = convertToBaseAmounts(
+        amountFloat,
+        formCurrency || currency,
+        rates
+      );
 
       // EDITING MODE
       if (editingExpenseId) {
@@ -256,7 +301,9 @@ export const useExpenses = ({
         const updatedExpense: Expense = {
           ...existingExpense,
           amount: amountFloat,
-          currency: currency,
+          currency: formCurrency || currency,
+          amountINR,
+          amountUSD,
           description: description.trim(),
           tag,
           timestamp: dateTime,
@@ -285,7 +332,9 @@ export const useExpenses = ({
         id: `local-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         userId: currentUserId,
         amount: amountFloat,
-        currency: currency,
+        currency: formCurrency || currency,
+        amountINR,
+        amountUSD,
         description: description.trim(),
         tag,
         timestamp: dateTime,
@@ -368,6 +417,7 @@ export const useExpenses = ({
       tag: expense.tag,
       date: expense.dateStr,
       time: expense.timeStr,
+      currency: expense.currency,
     });
     setEditingExpenseId(id);
     setView('add');

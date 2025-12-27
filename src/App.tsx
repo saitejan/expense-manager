@@ -13,7 +13,7 @@ import type { Expense, ViewType } from './types';
 import { LOCAL_STORAGE_KEY } from './constants';
 
 // Hooks
-import { useSettings, useOnlineStatus, useExpenses } from './hooks';
+import { useSettings, useOnlineStatus, useExpenses, useExchangeRate } from './hooks';
 
 // Services
 import {
@@ -31,6 +31,8 @@ import {
   syncPendingExpensesToFirebase as serviceSyncPending,
   syncRestoredCsvToFirebase as serviceSyncCsvToFirebase,
   deleteAllExpensesFromFirebase,
+  migrateExpensesToDefaultCurrency,
+  migrateExpensesToBaseAmounts,
 } from './services/firebase';
 import { loadExpensesFromLocalStorage, saveAllExpensesToLocalStorage } from './services/localStorage';
 import { convertToCsv, parseCsv } from './services/csv';
@@ -46,7 +48,6 @@ import { StatsView } from './views/StatsView';
 import { SettingsView } from './views/SettingsView';
 
 const App = () => {
-  const { exportUrl, currency, updateExportUrl, updateCurrency } = useSettings();
   const isOnline = useOnlineStatus();
 
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -60,7 +61,17 @@ const App = () => {
   const [user, setUser] = useState<any | null>(null);
   const isAuthenticated = !!user;
 
+  // Settings hook - needs user, db, and isAuthenticated
+  const { exportUrl, currency, statsCurrency, updateExportUrl, updateCurrency, updateStatsCurrency } = useSettings({
+    user,
+    db,
+    isAuthenticated,
+  });
+
   const [view, setView] = useState<ViewType>('list');
+
+  // Fetch exchange rates for stats view (24-hour cache)
+  const { rates: statsExchangeRates } = useExchangeRate('stats');
 
   // Use the custom expense management hook
   const {
@@ -120,6 +131,7 @@ const App = () => {
     updateExpenseInFirebase,
     deleteExpenseFromFirebase,
     showModal,
+    exchangeRates: statsExchangeRates,
   });
 
   // Refs for sync management
@@ -263,6 +275,74 @@ const App = () => {
     return unsubscribe;
   }, [db, user, isOnline, isAuthenticated, handleSignOut]);
 
+  // Migration: Set default currency for existing expenses
+  useEffect(() => {
+    const runMigration = async () => {
+      if (!db || !user || !isOnline || !isAuthenticated) {
+        return;
+      }
+
+      const migrationKey = `migration_currency_${user.uid}`;
+      const migrationCompleted = localStorage.getItem(migrationKey);
+
+      if (migrationCompleted) {
+        return; // Migration already completed for this user
+      }
+
+      try {
+        console.log('Running currency migration for existing expenses...');
+        const migratedCount = await migrateExpensesToDefaultCurrency(db, user.uid, 'INR');
+
+        if (migratedCount > 0) {
+          console.log(`Migration completed: ${migratedCount} expenses updated with INR currency`);
+          showModal('Migration Complete', `${migratedCount} existing expenses have been updated with INR currency.`);
+        }
+
+        // Mark migration as completed
+        localStorage.setItem(migrationKey, 'true');
+      } catch (error) {
+        console.error('Error during currency migration:', error);
+      }
+    };
+
+    // runMigration();
+  }, [db, user, isOnline, isAuthenticated]);
+
+  // Migration: Add amountINR and amountUSD to existing expenses
+  useEffect(() => {
+    const runBaseAmountsMigration = async () => {
+      if (!db || !user || !isOnline || !isAuthenticated) {
+        return;
+      }
+
+      const migrationKey = `migration_base_amounts_${user.uid}`;
+      const migrationCompleted = localStorage.getItem(migrationKey);
+
+      if (migrationCompleted) {
+        return; // Migration already completed for this user
+      }
+
+      try {
+        console.log('Running base amounts migration for existing expenses...');
+        const { getExchangeRates } = await import('./services/exchangeRate');
+        const rates = await getExchangeRates('stats');
+        const migratedCount = await migrateExpensesToBaseAmounts(db, user.uid, rates);
+
+        if (migratedCount > 0) {
+          console.log(`Base amounts migration completed: ${migratedCount} expenses updated`);
+          showModal('Migration Complete', `${migratedCount} expenses have been updated with INR and USD amounts.`);
+        }
+
+        // Mark migration as completed
+        localStorage.setItem(migrationKey, 'true');
+      } catch (error) {
+        console.error('Error during base amounts migration:', error);
+      }
+    };
+
+    runBaseAmountsMigration();
+  }, [db, user, isOnline, isAuthenticated]);
+
   // CSV Functions
   const syncRestoredCsvToFirebase = async (dataToSync: Expense[], userId: string) => {
     if (!db || !user) return;
@@ -329,6 +409,8 @@ const App = () => {
         id: expense.id,
         userId: expense.userId,
         amount: expense.amount,
+        amountINR: expense.amountINR,
+        amountUSD: expense.amountUSD,
         currency: expense.currency,
         description: expense.description,
         tag: expense.tag,
@@ -547,6 +629,9 @@ const App = () => {
               currency={currency}
               isOnline={isOnline}
               allExpenses={allExpenses}
+              statsCurrency={statsCurrency}
+              updateStatsCurrency={updateStatsCurrency}
+              exchangeRates={statsExchangeRates}
             />
           )}
 
@@ -584,9 +669,8 @@ const App = () => {
           <div className="max-w-4xl mx-auto flex justify-around items-center p-3">
             <button
               onClick={() => setView('list')}
-              className={`flex flex-col items-center px-4 py-2 rounded-lg transition ${
-                view === 'list' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-600 hover:bg-gray-100'
-              }`}
+              className={`flex flex-col items-center px-4 py-2 rounded-lg transition ${view === 'list' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-600 hover:bg-gray-100'
+                }`}
             >
               <DollarSign className="w-6 h-6" />
               <span className="text-xs mt-1">Transactions</span>
@@ -602,9 +686,8 @@ const App = () => {
 
             <button
               onClick={() => setView('stats')}
-              className={`flex flex-col items-center px-4 py-2 rounded-lg transition ${
-                view === 'stats' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-600 hover:bg-gray-100'
-              }`}
+              className={`flex flex-col items-center px-4 py-2 rounded-lg transition ${view === 'stats' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-600 hover:bg-gray-100'
+                }`}
             >
               <Calendar className="w-6 h-6" />
               <span className="text-xs mt-1">Stats</span>
@@ -612,9 +695,8 @@ const App = () => {
 
             <button
               onClick={() => setView('settings')}
-              className={`flex flex-col items-center px-4 py-2 rounded-lg transition ${
-                view === 'settings' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-600 hover:bg-gray-100'
-              }`}
+              className={`flex flex-col items-center px-4 py-2 rounded-lg transition ${view === 'settings' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-600 hover:bg-gray-100'
+                }`}
             >
               <Settings className="w-6 h-6" />
               <span className="text-xs mt-1">Settings</span>

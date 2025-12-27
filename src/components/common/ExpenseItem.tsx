@@ -58,9 +58,8 @@ export const ExpenseItem: React.FC<ExpenseItemProps> = ({
 
   return (
     <div
-      className={`flex items-center justify-between p-3 border rounded-lg shadow-sm hover:shadow-md transition duration-200 ${
-        isPending ? 'bg-orange-50 border-orange-200' : 'bg-white border-gray-200'
-      }`}
+      className={`flex items-center justify-between p-3 border rounded-lg shadow-sm hover:shadow-md transition duration-200 ${isPending ? 'bg-orange-50 border-orange-200' : 'bg-white border-gray-200'
+        }`}
     >
       <div className="flex-grow min-w-0">
         <div className="text-xs font-semibold text-gray-500 mb-1">
@@ -76,9 +75,7 @@ export const ExpenseItem: React.FC<ExpenseItemProps> = ({
               <Save className="w-3 h-3 mr-1" /> Pending
             </span>
           )}
-          {expense.currency !== currency && (
-            <span className="text-xs text-gray-500 font-medium">({expense.currency})</span>
-          )}
+          <span className="text-xs text-gray-500 font-medium">({expense.currency})</span>
         </div>
       </div>
       <div className="flex items-center space-x-3 ml-4">

@@ -4,7 +4,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Calendar, ArrowLeft, ArrowRight, BarChart3, Grid3x3 } from 'lucide-react';
-import type { Expense, AnnualTotal } from '../../types';
+import type { Expense, AnnualTotal, ExchangeRates } from '../../types';
 import { ExpenseItem } from '../../components/common/ExpenseItem';
 import { formatAmount } from '../../utils';
 import { ExpenseTrendChart } from '../../components/charts/ExpenseTrendChart';
@@ -29,6 +29,9 @@ interface StatsViewProps {
   currency: string;
   isOnline: boolean;
   allExpenses: Expense[];
+  statsCurrency: string;
+  updateStatsCurrency: (currency: string) => void;
+  exchangeRates: ExchangeRates | null;
 }
 
 /**
@@ -52,6 +55,9 @@ export const StatsView: React.FC<StatsViewProps> = ({
   currency,
   isOnline,
   allExpenses,
+  statsCurrency,
+  updateStatsCurrency,
+  exchangeRates,
 }) => {
   const [viewMode, setViewMode] = useState<'grid' | 'chart'>('grid');
   const [timeView, setTimeView] = useState<TimeView>('monthly');
@@ -59,6 +65,26 @@ export const StatsView: React.FC<StatsViewProps> = ({
 
   const handleMonthClick = (monthIndex: number) => {
     setFilterMonth(monthIndex);
+  };
+
+  // Helper function to get amount in user's currency
+  const getAmountInCurrency = (expense: Expense): number => {
+    if (currency === 'INR') {
+      return expense.amountINR || expense.amount;
+    } else if (currency === 'USD') {
+      return expense.amountUSD || expense.amount;
+    } else {
+      // For other currencies, convert from USD using live rates
+      if (expense.currency === currency) {
+        return expense.amount;
+      }
+      // Convert USD to target currency using live rates
+      if (exchangeRates && exchangeRates.rates[currency]) {
+        return (expense.amountUSD || expense.amount) * exchangeRates.rates[currency];
+      }
+      // Fallback to USD amount if no rate available
+      return expense.amountUSD || expense.amount;
+    }
   };
 
   // Compute chart data based on time view
@@ -81,7 +107,7 @@ export const StatsView: React.FC<StatsViewProps> = ({
           if (!dailyData[key]) {
             dailyData[key] = { amount: 0, count: 0 };
           }
-          dailyData[key].amount += expense.amount;
+          dailyData[key].amount += getAmountInCurrency(expense);
           dailyData[key].count += 1;
         });
 
@@ -112,7 +138,7 @@ export const StatsView: React.FC<StatsViewProps> = ({
           if (!yearlyData[year]) {
             yearlyData[year] = { amount: 0, count: 0 };
           }
-          yearlyData[year].amount += expense.amount;
+          yearlyData[year].amount += getAmountInCurrency(expense);
           yearlyData[year].count += 1;
         });
 
@@ -128,7 +154,7 @@ export const StatsView: React.FC<StatsViewProps> = ({
       default:
         return [];
     }
-  }, [allExpenses, filterYear, filterMonth, timeView, annualTotals]);
+  }, [allExpenses, filterYear, filterMonth, timeView, annualTotals, currency]);
 
   // Compute category breakdown data
   const categoryData = useMemo(() => {
@@ -144,7 +170,7 @@ export const StatsView: React.FC<StatsViewProps> = ({
       if (!categoryTotals[expense.tag]) {
         categoryTotals[expense.tag] = 0;
       }
-      categoryTotals[expense.tag] += expense.amount;
+      categoryTotals[expense.tag] += getAmountInCurrency(expense);
     });
 
     return Object.entries(categoryTotals)
@@ -153,7 +179,7 @@ export const StatsView: React.FC<StatsViewProps> = ({
         name: tag,
         amount,
       }));
-  }, [allExpenses, filterYear, timeView, filteredExpenses]);
+  }, [allExpenses, filterYear, timeView, filteredExpenses, currency]);
 
   return (
     <div className="p-4 bg-white rounded-xl shadow-lg">
@@ -168,22 +194,20 @@ export const StatsView: React.FC<StatsViewProps> = ({
         <div className="flex gap-2">
           <button
             onClick={() => setViewMode('grid')}
-            className={`p-2 rounded-lg transition ${
-              viewMode === 'grid'
-                ? 'bg-indigo-600 text-white'
-                : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-            }`}
+            className={`p - 2 rounded - lg transition ${viewMode === 'grid'
+              ? 'bg-indigo-600 text-white'
+              : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+              } `}
             title="Grid View"
           >
             <Grid3x3 className="w-5 h-5" />
           </button>
           <button
             onClick={() => setViewMode('chart')}
-            className={`p-2 rounded-lg transition ${
-              viewMode === 'chart'
-                ? 'bg-indigo-600 text-white'
-                : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-            }`}
+            className={`p - 2 rounded - lg transition ${viewMode === 'chart'
+              ? 'bg-indigo-600 text-white'
+              : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+              } `}
             title="Chart View"
           >
             <BarChart3 className="w-5 h-5" />
@@ -200,31 +224,28 @@ export const StatsView: React.FC<StatsViewProps> = ({
             <div className="flex gap-2">
               <button
                 onClick={() => setTimeView('daily')}
-                className={`px-4 py-2 text-sm font-medium rounded-lg transition ${
-                  timeView === 'daily'
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-white text-gray-700 hover:bg-indigo-50'
-                }`}
+                className={`px-4 py-2 text-sm font-medium rounded-lg transition ${timeView === 'daily'
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-white text-gray-700 hover:bg-indigo-50'
+                  }`}
               >
                 Daily
               </button>
               <button
                 onClick={() => setTimeView('monthly')}
-                className={`px-4 py-2 text-sm font-medium rounded-lg transition ${
-                  timeView === 'monthly'
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-white text-gray-700 hover:bg-indigo-50'
-                }`}
+                className={`px-4 py-2 text-sm font-medium rounded-lg transition ${timeView === 'monthly'
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-white text-gray-700 hover:bg-indigo-50'
+                  }`}
               >
                 Monthly
               </button>
               <button
                 onClick={() => setTimeView('yearly')}
-                className={`px-4 py-2 text-sm font-medium rounded-lg transition ${
-                  timeView === 'yearly'
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-white text-gray-700 hover:bg-indigo-50'
-                }`}
+                className={`px-4 py-2 text-sm font-medium rounded-lg transition ${timeView === 'yearly'
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-white text-gray-700 hover:bg-indigo-50'
+                  }`}
               >
                 Yearly
               </button>
@@ -237,31 +258,28 @@ export const StatsView: React.FC<StatsViewProps> = ({
             <div className="flex gap-2">
               <button
                 onClick={() => setChartType('bar')}
-                className={`px-4 py-2 text-sm font-medium rounded-lg transition ${
-                  chartType === 'bar'
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-white text-gray-700 hover:bg-indigo-50'
-                }`}
+                className={`px-4 py-2 text-sm font-medium rounded-lg transition ${chartType === 'bar'
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-white text-gray-700 hover:bg-indigo-50'
+                  }`}
               >
                 Bar
               </button>
               <button
                 onClick={() => setChartType('line')}
-                className={`px-4 py-2 text-sm font-medium rounded-lg transition ${
-                  chartType === 'line'
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-white text-gray-700 hover:bg-indigo-50'
-                }`}
+                className={`px-4 py-2 text-sm font-medium rounded-lg transition ${chartType === 'line'
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-white text-gray-700 hover:bg-indigo-50'
+                  }`}
               >
                 Line
               </button>
               <button
                 onClick={() => setChartType('pie')}
-                className={`px-4 py-2 text-sm font-medium rounded-lg transition ${
-                  chartType === 'pie'
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-white text-gray-700 hover:bg-indigo-50'
-                }`}
+                className={`px-4 py-2 text-sm font-medium rounded-lg transition ${chartType === 'pie'
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-white text-gray-700 hover:bg-indigo-50'
+                  }`}
               >
                 Pie
               </button>
@@ -305,7 +323,7 @@ export const StatsView: React.FC<StatsViewProps> = ({
               data={categoryData}
               chartType="pie"
               currency={currency}
-              title={`Category Breakdown - ${timeView === 'yearly' ? 'All Time' : timeView === 'monthly' ? filterYear : filterDateString}`}
+              title={`Category Breakdown - ${timeView === 'yearly' ? 'All Time' : timeView === 'monthly' ? filterYear : filterDateString} `}
               height={350}
             />
           )}
@@ -362,49 +380,48 @@ export const StatsView: React.FC<StatsViewProps> = ({
 
           {/* Annual Summary */}
           <div className="mb-8 border border-gray-200 rounded-xl p-4 bg-gray-50">
-        <h3 className="text-xl font-semibold mb-3 text-gray-700">Yearly Snapshot</h3>
-        <p className="text-xs text-gray-500 mb-3">Click on any month to view transactions below</p>
-        <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-3">
-          {annualTotals.map((data, index) => {
-            const isSelected = filterMonth === index;
-            return (
-              <button
-                key={index}
-                onClick={() => handleMonthClick(index)}
-                className={`p-2 text-center bg-white rounded-lg shadow-sm border-2 transition cursor-pointer ${
-                  isSelected
-                    ? 'border-indigo-500 ring-2 ring-indigo-300 shadow-md'
-                    : 'border-indigo-100 hover:shadow-md hover:border-indigo-300'
-                }`}
-              >
-                <div className="text-xs font-medium text-indigo-600">{data.monthName}</div>
-                <div className="text-sm font-bold text-gray-900">{formatAmount(data.total, currency)}</div>
-                <div className="text-xs text-gray-500">{data.count} items</div>
-              </button>
-            );
-          })}
-        </div>
-        <p className="mt-4 text-sm text-gray-600">
-          Year Total Expense:
-          <span className="font-bold text-indigo-600 ml-1">
-            {formatAmount(annualTotals.reduce((sum, m) => sum + m.total, 0), currency)}
-          </span>
-        </p>
-      </div>
+            <h3 className="text-xl font-semibold mb-3 text-gray-700">Yearly Snapshot</h3>
+            <p className="text-xs text-gray-500 mb-3">Click on any month to view transactions below</p>
+            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+              {annualTotals.map((data, index) => {
+                const isSelected = filterMonth === index;
+                return (
+                  <button
+                    key={index}
+                    onClick={() => handleMonthClick(index)}
+                    className={`p - 2 text - center bg - white rounded - lg shadow - sm border - 2 transition cursor - pointer ${isSelected
+                      ? 'border-indigo-500 ring-2 ring-indigo-300 shadow-md'
+                      : 'border-indigo-100 hover:shadow-md hover:border-indigo-300'
+                      } `}
+                  >
+                    <div className="text-xs font-medium text-indigo-600">{data.monthName}</div>
+                    <div className="text-sm font-bold text-gray-900">{formatAmount(data.total, currency)}</div>
+                    <div className="text-xs text-gray-500">{data.count} items</div>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-4 text-sm text-gray-600">
+              Year Total Expense:
+              <span className="font-bold text-indigo-600 ml-1">
+                {formatAmount(annualTotals.reduce((sum, m) => sum + m.total, 0), currency)}
+              </span>
+            </p>
+          </div>
 
-      {/* Monthly Filter and Total */}
-      <div className="flex justify-between items-center mb-6 p-3 bg-green-50 rounded-lg shadow-inner">
-        <button onClick={handlePrevMonth} className="p-2 text-green-700 hover:bg-green-200 rounded-full transition duration-150">
-          <ArrowLeft className="w-5 h-5" />
-        </button>
-        <h3 className="lg:text-lg font-semibold text-green-800 flex-grow text-center">
-          {filterDateString} Total:
-          <span className="font-extrabold ml-2">{formatAmount(monthlyTotal, currency)}</span>
-        </h3>
-        <button onClick={handleNextMonth} className="p-2 text-green-700 hover:bg-green-200 rounded-full transition duration-150">
-          <ArrowRight className="w-5 h-5" />
-        </button>
-      </div>
+          {/* Monthly Filter and Total */}
+          <div className="flex justify-between items-center mb-6 p-3 bg-green-50 rounded-lg shadow-inner">
+            <button onClick={handlePrevMonth} className="p-2 text-green-700 hover:bg-green-200 rounded-full transition duration-150">
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <h3 className="lg:text-lg font-semibold text-green-800 flex-grow text-center">
+              {filterDateString} Total:
+              <span className="font-extrabold ml-2">{formatAmount(monthlyTotal, currency)}</span>
+            </h3>
+            <button onClick={handleNextMonth} className="p-2 text-green-700 hover:bg-green-200 rounded-full transition duration-150">
+              <ArrowRight className="w-5 h-5" />
+            </button>
+          </div>
 
           {/* Monthly Transaction List */}
           <h3 className="text-xl font-semibold mb-3 text-gray-700">

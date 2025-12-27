@@ -165,6 +165,40 @@ export const AddExpenseView: React.FC<AddExpenseViewProps> = ({
           </div>
         </div>
 
+        {/* Currency Selection */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="currency-select">
+            Currency
+          </label>
+          <select
+            id="currency-select"
+            name="currency"
+            value={form.currency || currency}
+            onChange={handleFormChange}
+            className="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 transition duration-150"
+            required
+          >
+            <option value="INR">INR - ₹ Indian Rupee</option>
+            <option value="USD">USD - $ US Dollar</option>
+            <option value="EUR">EUR - € Euro</option>
+            <option value="GBP">GBP - £ British Pound</option>
+            <option value="JPY">JPY - ¥ Japanese Yen</option>
+            <option value="CNY">CNY - ¥ Chinese Yuan</option>
+            <option value="AUD">AUD - A$ Australian Dollar</option>
+            <option value="CAD">CAD - C$ Canadian Dollar</option>
+            <option value="CHF">CHF - Fr Swiss Franc</option>
+            <option value="SGD">SGD - S$ Singapore Dollar</option>
+            <option value="AED">AED - د.إ UAE Dirham</option>
+            <option value="SAR">SAR - ﷼ Saudi Riyal</option>
+            <option value="KRW">KRW - ₩ South Korean Won</option>
+            <option value="BRL">BRL - R$ Brazilian Real</option>
+            <option value="MXN">MXN - Mex$ Mexican Peso</option>
+          </select>
+          <p className="text-xs text-gray-500 mt-1">
+            Select the currency for this expense
+          </p>
+        </div>
+
         {/* Date and Time */}
         <div className="grid grid-cols-2 gap-4">
           <div>
@@ -270,9 +304,8 @@ export const AddExpenseView: React.FC<AddExpenseViewProps> = ({
                       key={tag}
                       type="button"
                       onClick={() => handleTagSelect(tag)}
-                      className={`w-full text-left px-4 py-2 hover:bg-indigo-50 transition duration-150 text-sm border-b border-gray-100 last:border-b-0 ${
-                        form.tag === tag ? 'bg-indigo-100 font-semibold text-indigo-700' : 'text-gray-700'
-                      }`}
+                      className={`w-full text-left px-4 py-2 hover:bg-indigo-50 transition duration-150 text-sm border-b border-gray-100 last:border-b-0 ${form.tag === tag ? 'bg-indigo-100 font-semibold text-indigo-700' : 'text-gray-700'
+                        }`}
                     >
                       {tag}
                     </button>

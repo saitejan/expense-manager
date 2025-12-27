@@ -19,6 +19,8 @@ export const convertToCsv = (data: Expense[]): string => {
     e.userId,
     e.amount.toString(),
     e.currency,
+    e.amountINR?.toString() || '0',
+    e.amountUSD?.toString() || '0',
     `"${e.description.replace(/"/g, '""')}"`,
     e.tag,
     e.timestamp.toISOString(),
@@ -42,15 +44,14 @@ export const parseCsv = (csv: string): Expense[] => {
   if (lines.length < 2) return [];
 
   const headers = lines[0].split(',').map(h => h.trim());
-  if (headers.slice(0, 9).join(',') !== CSV_HEADERS.slice(0, 9).join(',')) {
-    throw new Error("Invalid CSV format. Headers do not match expected schema.");
-  }
+  // Allow old CSV format without amountINR/amountUSD
+  const hasBaseAmounts = headers.includes('amountINR') && headers.includes('amountUSD');
 
   const data: Expense[] = [];
   for (let i = 1; i < lines.length; i++) {
     const row = lines[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
 
-    if (row.length >= CSV_HEADERS.length - 1) {
+    if (row.length >= 9) {
       const amount = parseFloat(row[2]);
 
       if (isNaN(amount)) continue;
@@ -59,17 +60,29 @@ export const parseCsv = (csv: string): Expense[] => {
       const csvId = row[0]?.trim();
       const id = csvId && csvId.length > 0 ? csvId : `imported-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
+      // Parse base amounts if available, otherwise set to 0 (will be migrated)
+      const amountINR = hasBaseAmounts ? parseFloat(row[4]) || 0 : 0;
+      const amountUSD = hasBaseAmounts ? parseFloat(row[5]) || 0 : 0;
+      const descriptionIndex = hasBaseAmounts ? 6 : 4;
+      const tagIndex = hasBaseAmounts ? 7 : 5;
+      const timestampIndex = hasBaseAmounts ? 8 : 6;
+      const dateStrIndex = hasBaseAmounts ? 9 : 7;
+      const timeStrIndex = hasBaseAmounts ? 10 : 8;
+      const syncStatusIndex = hasBaseAmounts ? 11 : 9;
+
       data.push({
         id: id,
         userId: row[1],
         amount: amount,
         currency: row[3],
-        description: row[4].replace(/^"|"$/g, '').replace(/""/g, '"'),
-        tag: row[5],
-        timestamp: new Date(row[6]),
-        dateStr: row[7],
-        timeStr: row[8],
-        syncStatus: row[9] === 'synced' ? 'synced' : 'pending',
+        amountINR,
+        amountUSD,
+        description: row[descriptionIndex].replace(/^"|"$/g, '').replace(/""/g, '"'),
+        tag: row[tagIndex],
+        timestamp: new Date(row[timestampIndex]),
+        dateStr: row[dateStrIndex],
+        timeStr: row[timeStrIndex],
+        syncStatus: row[syncStatusIndex] === 'synced' ? 'synced' : 'pending',
       });
     }
   }

@@ -92,20 +92,33 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <h3 className="text-xl font-semibold mb-3 text-indigo-700">General Settings</h3>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="currency">
-              Default Currency Code (e.g., USD, EUR, INR)
+              Preferred Currency
             </label>
-            <input
-              type="text"
+            <select
               id="currency"
               value={currency}
               onChange={(e) => updateCurrency(e.target.value)}
-              maxLength={3}
-              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 transition duration-150 uppercase"
-              placeholder="e.g., USD, EUR, INR"
+              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 transition duration-150"
               required
-            />
+            >
+              <option value="INR">INR - ₹ Indian Rupee</option>
+              <option value="USD">USD - $ US Dollar</option>
+              <option value="EUR">EUR - € Euro</option>
+              <option value="GBP">GBP - £ British Pound</option>
+              <option value="JPY">JPY - ¥ Japanese Yen</option>
+              <option value="CNY">CNY - ¥ Chinese Yuan</option>
+              <option value="AUD">AUD - A$ Australian Dollar</option>
+              <option value="CAD">CAD - C$ Canadian Dollar</option>
+              <option value="CHF">CHF - Fr Swiss Franc</option>
+              <option value="SGD">SGD - S$ Singapore Dollar</option>
+              <option value="AED">AED - د.إ UAE Dirham</option>
+              <option value="SAR">SAR - ﷼ Saudi Riyal</option>
+              <option value="KRW">KRW - ₩ South Korean Won</option>
+              <option value="BRL">BRL - R$ Brazilian Real</option>
+              <option value="MXN">MXN - Mex$ Mexican Peso</option>
+            </select>
             <p className="text-xs text-gray-500 mt-1">
-              Sets the default 3-letter currency code for new expenses.
+              Sets the default currency for new expenses. You can select a different currency for each expense.
             </p>
           </div>
         </div>

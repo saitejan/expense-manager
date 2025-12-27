@@ -2,6 +2,7 @@
  * Central export for all custom hooks
  */
 
-export * from './useOnlineStatus';
-export * from './useSettings';
-export * from './useExpenses';
+export { useSettings } from './useSettings';
+export { useOnlineStatus } from './useOnlineStatus';
+export { useExpenses } from './useExpenses';
+export { useExchangeRate } from './useExchangeRate';
