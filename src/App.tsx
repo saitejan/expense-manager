@@ -3,7 +3,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 import { getDatabase, ref, push, onValue, remove, set, off } from 'firebase/database';
 import {
-    PlusCircle, Trash2, Calendar, DollarSign, Tag, User, Download, Settings, LogOut, ArrowLeft, ArrowRight, Save, Upload, AlertTriangle, CloudOff, Cloud, HardDrive, Search
+    PlusCircle, Trash2, Calendar, DollarSign, Tag, User, Download, Settings, LogOut, ArrowLeft, ArrowRight, Save, Upload, AlertTriangle, CloudOff, Cloud, HardDrive, Search, Edit2
 } from 'lucide-react';
 
 // --- Firebase Configuration from Environment Variables ---
@@ -23,9 +23,11 @@ const firebaseConfig = getFirebaseConfig();
 
 // --- CONSTANTS ---
 const LOCAL_STORAGE_KEY = 'moneytrack_local_expenses';
+// const SYNC_METADATA_KEY = 'moneytrack_sync_metadata';
 const TAGS = ['Shopping', 'Food', 'Travel', 'Hospital', 'Wife', 'Baby', 'Me', 'Bills', 'Other'];
 const CSV_HEADERS = ['id', 'userId', 'amount', 'currency', 'description', 'tag', 'timestamp', 'dateStr', 'timeStr', 'syncStatus'];
 const USER_EXPENSES_PATH = (uid: string) => `users/${uid}/expenses`;
+// const USER_METADATA_PATH = (uid: string) => `users/${uid}/metadata`;
 
 // --- TYPESCRIPT INTERFACES ---
 
@@ -125,7 +127,7 @@ const showModal = (title: string, message: string, isConfirm = false, onConfirm 
 // Move input-heavy components out of the App render to keep stable identity
 // and avoid remounts that cause focus loss while typing.
 
-const ExpenseItem: React.FC<{ expense: Expense; onDelete: (id: string) => void; showDate?: boolean; currency: string; isOnline: boolean }> = ({ expense, onDelete, showDate = false, currency, isOnline }) => {
+const ExpenseItem: React.FC<{ expense: Expense; onDelete: (id: string) => void; onEdit: (id: string) => void; showDate?: boolean; currency: string; isOnline: boolean }> = ({ expense, onDelete, onEdit, showDate = false, currency, isOnline }) => {
     const time = expense.timestamp.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
     const fullDateDisplay = expense.timestamp.toLocaleString('en-US', {
         year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
@@ -175,6 +177,14 @@ const ExpenseItem: React.FC<{ expense: Expense; onDelete: (id: string) => void; 
                     {formatAmount(expense.amount, expense.currency)}
                 </span>
                 <button
+                    onClick={() => onEdit(expense.id)}
+                    className="p-1 text-blue-400 hover:text-blue-600 transition duration-150 hover:bg-blue-50 rounded-full disabled:opacity-50"
+                    aria-label="Edit Expense"
+                    disabled={isDeleteDisabled}
+                >
+                    <Edit2 className="w-5 h-5" />
+                </button>
+                <button
                     onClick={() => onDelete(expense.id)}
                     className="p-1 text-red-400 hover:text-red-600 transition duration-150 hover:bg-red-50 rounded-full disabled:opacity-50"
                     aria-label="Delete Expense"
@@ -199,7 +209,8 @@ const AddExpenseView: React.FC<{
     currency: string;
     expenses: Expense[];
     availableTags: string[];
-}> = ({ form, handleFormClose, handleFormChange, handleAddExpense, loading, isAuthenticated, isOnline, currency, expenses, availableTags }) => {
+    editingExpenseId: string | null;
+}> = ({ form, handleFormClose, handleFormChange, handleAddExpense, loading, isAuthenticated, isOnline, currency, expenses, availableTags, editingExpenseId }) => {
     const [showSuggestions, setShowSuggestions] = React.useState(false);
     const [filteredSuggestions, setFilteredSuggestions] = React.useState<string[]>([]);
     const descriptionInputRef = React.useRef<HTMLInputElement>(null);
@@ -304,8 +315,8 @@ const AddExpenseView: React.FC<{
     return (
         <div className="p-4 bg-white rounded-xl shadow-lg">
             <h2 className="text-2xl font-bold mb-6 text-gray-800 flex items-center">
-                <PlusCircle className="w-5 h-5 mr-2 text-indigo-500" />
-                Add New Expense
+                {editingExpenseId ? <Edit2 className="w-5 h-5 mr-2 text-indigo-500" /> : <PlusCircle className="w-5 h-5 mr-2 text-indigo-500" />}
+                {editingExpenseId ? 'Edit Expense' : 'Add New Expense'}
             </h2>
             <form onSubmit={handleAddExpense} className="space-y-4">
                 {/* Amount */}
@@ -641,6 +652,8 @@ const App = () => {
         time: new Date().toTimeString().substring(0, 5),
     });
 
+    const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
+
     const allExpenses = useMemo(() => {
         return [...expenses, ...pendingExpenses].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
     }, [expenses, pendingExpenses]);
@@ -920,10 +933,11 @@ const App = () => {
             date: new Date().toISOString().substring(0, 10),
             time: new Date().toTimeString().substring(0, 5),
         });
+        setEditingExpenseId(null);
         setView('list');
     }
 
-    // Handle Form Submission (Add Expense)
+    // Handle Form Submission (Add or Edit Expense)
     const handleAddExpense = async (e: React.FormEvent) => {
         e.preventDefault();
 
@@ -939,42 +953,88 @@ const App = () => {
         try {
             setLoading(true);
             const dateTime = new Date(`${date}T${time}:00`);
-            
-            const newExpense: Expense = {
-                id: isOnline ? '' : `local-${Date.now()}`,
-                userId: currentUserId,
-                amount: amountFloat,
-                currency: currency,
-                description: description,
-                tag: tag,
-                timestamp: dateTime,
-                dateStr: date,
-                timeStr: time,
-                syncStatus: isOnline && isAuthenticated ? 'synced' : 'pending',
-            };
 
-            if (isOnline && isAuthenticated && db && user) {
-                // ONLINE: Save to Firebase (listener handles state update)
-                const { id, syncStatus, ...firebaseExpense } = newExpense;
-                const userExpensesRef = ref(db, USER_EXPENSES_PATH(user.uid));
-                const newExpenseRef = push(userExpensesRef);
-                await set(newExpenseRef, {
-                    ...firebaseExpense,
-                    timestamp: dateTime.getTime(), // Store as milliseconds
-                });
-                // showModal("Expense Saved", "Successfully saved to the cloud.");
+            // EDITING MODE
+            if (editingExpenseId) {
+                const existingExpense = allExpenses.find(e => e.id === editingExpenseId);
+                if (!existingExpense) {
+                    showModal("Error", "Expense not found.");
+                    setLoading(false);
+                    return;
+                }
 
+                const updatedExpense: Expense = {
+                    ...existingExpense,
+                    amount: amountFloat,
+                    currency: currency,
+                    description: description,
+                    tag: tag,
+                    timestamp: dateTime,
+                    dateStr: date,
+                    timeStr: time,
+                };
+
+                // Update synced expense in Firebase
+                if (existingExpense.syncStatus === 'synced') {
+                    if (!isOnline || !db || !user) {
+                        showModal("Offline Warning", "Cannot update synced expense while offline.");
+                        setLoading(false);
+                        return;
+                    }
+                    const expenseRef = ref(db, `${USER_EXPENSES_PATH(user.uid)}/${editingExpenseId}`);
+                    const { id, syncStatus, ...firebaseExpense } = updatedExpense;
+                    await set(expenseRef, {
+                        ...firebaseExpense,
+                        timestamp: dateTime.getTime(),
+                    });
+                } else {
+                    // Update pending expense locally
+                    setPendingExpenses(prev => {
+                        const newPending = prev.map(e => e.id === editingExpenseId ? updatedExpense : e);
+                        saveAllExpensesToLocalStorage(expenses, newPending);
+                        return newPending;
+                    });
+                }
+
+                setEditingExpenseId(null);
             } else {
-                // OFFLINE: Save to local state and LocalStorage
-                setPendingExpenses(prev => {
-                    const newPending = [...prev, newExpense];
-                    // IMPORTANT: Save against the main synced list + the new pending list
-                    saveAllExpensesToLocalStorage(expenses, newPending); 
-                    return newPending;
-                });
-                // showModal("Offline Save", "Expense saved locally. It will sync to the cloud when you're back online.");
+                // ADDING MODE
+                const newExpense: Expense = {
+                    id: isOnline ? '' : `local-${Date.now()}`,
+                    userId: currentUserId,
+                    amount: amountFloat,
+                    currency: currency,
+                    description: description,
+                    tag: tag,
+                    timestamp: dateTime,
+                    dateStr: date,
+                    timeStr: time,
+                    syncStatus: isOnline && isAuthenticated ? 'synced' : 'pending',
+                };
+
+                if (isOnline && isAuthenticated && db && user) {
+                    // ONLINE: Save to Firebase (listener handles state update)
+                    const { id, syncStatus, ...firebaseExpense } = newExpense;
+                    const userExpensesRef = ref(db, USER_EXPENSES_PATH(user.uid));
+                    const newExpenseRef = push(userExpensesRef);
+                    await set(newExpenseRef, {
+                        ...firebaseExpense,
+                        timestamp: dateTime.getTime(), // Store as milliseconds
+                    });
+                    // showModal("Expense Saved", "Successfully saved to the cloud.");
+
+                } else {
+                    // OFFLINE: Save to local state and LocalStorage
+                    setPendingExpenses(prev => {
+                        const newPending = [...prev, newExpense];
+                        // IMPORTANT: Save against the main synced list + the new pending list
+                        saveAllExpensesToLocalStorage(expenses, newPending);
+                        return newPending;
+                    });
+                    // showModal("Offline Save", "Expense saved locally. It will sync to the cloud when you're back online.");
+                }
             }
-            
+
             // Reset form and switch view
             setForm({
                 amount: '',
@@ -986,11 +1046,35 @@ const App = () => {
             setView('list');
 
         } catch (error: any) {
-            console.error("Error adding expense:", error);
+            console.error("Error saving expense:", error);
             showModal("Save Error", `Failed to save expense: ${error.message}`);
         } finally {
             setLoading(false);
         }
+    };
+
+    // Handle Expense Editing
+    const handleEditExpense = (id: string) => {
+        const expense = allExpenses.find(e => e.id === id);
+        if (!expense) return;
+
+        // Check if editing is allowed
+        const isDeleteDisabled = expense.syncStatus === 'synced' && !isOnline;
+        if (isDeleteDisabled) {
+            showModal("Offline Warning", "Cannot edit a synced item while offline. Please try again when online.");
+            return;
+        }
+
+        // Load expense data into form
+        setForm({
+            amount: expense.amount.toString(),
+            description: expense.description,
+            tag: expense.tag,
+            date: expense.dateStr,
+            time: expense.timeStr,
+        });
+        setEditingExpenseId(id);
+        setView('add');
     };
 
     // Handle Expense Deletion (Supports both synced and pending items)
@@ -1004,8 +1088,8 @@ const App = () => {
         // 1. Local Delete (Pending Item - includes newly created and imported CSV items)
         if (expense.syncStatus === 'pending') {
             showModal(
-                "Confirm Local Deletion", 
-                "Are you sure you want to delete this pending expense? It has not been synced to the cloud.", 
+                "Confirm Local Deletion",
+                "Are you sure you want to delete this pending expense? It has not been synced to the cloud.",
                 true,
                 () => {
                     setPendingExpenses(prev => {
@@ -1018,7 +1102,7 @@ const App = () => {
             );
             return;
         }
-        
+
         // 2. Cloud Delete (Synced Item)
         if (!db || !user) {
             showModal("Permission Denied", "Cannot delete synced item without authentication.");
@@ -1026,8 +1110,8 @@ const App = () => {
         }
 
         showModal(
-            "Confirm Cloud Deletion", 
-            "Are you sure you want to permanently delete this expense from the cloud?", 
+            "Confirm Cloud Deletion",
+            "Are you sure you want to permanently delete this expense from the cloud?",
             true,
             async () => {
                 try {
@@ -1039,7 +1123,7 @@ const App = () => {
                         return;
                     }
                     const expenseRef = ref(db, `${USER_EXPENSES_PATH(user.uid)}/${id}`);
-                    await remove(expenseRef); 
+                    await remove(expenseRef);
                 } catch (error: any) {
                     console.error("Error deleting expense:", error);
                     showModal("Delete Error", `Failed to delete expense: ${error.message}`);
@@ -1340,7 +1424,7 @@ const App = () => {
                         onScroll={handleScroll}
                     >
                         {visibleExpenses.map(expense => (
-                            <ExpenseItem key={expense.id} showDate={true} expense={expense} onDelete={handleDeleteExpense} currency={currency} isOnline={isOnline} />
+                            <ExpenseItem key={expense.id} showDate={true} expense={expense} onDelete={handleDeleteExpense} onEdit={handleEditExpense} currency={currency} isOnline={isOnline} />
                         ))}
                         {hasMore && (
                             <div className="text-center py-4 text-sm text-gray-500">
@@ -1449,7 +1533,7 @@ const App = () => {
                 ) : (
                     <div className="space-y-3" style={{maxHeight: "50vh", overflowY: "auto"}}>
                         {filteredExpenses.map((expense) => (
-                            <ExpenseItem key={expense.id} expense={expense} onDelete={handleDeleteExpense} showDate={true} currency={currency} isOnline={isOnline} />
+                            <ExpenseItem key={expense.id} expense={expense} onDelete={handleDeleteExpense} onEdit={handleEditExpense} showDate={true} currency={currency} isOnline={isOnline} />
                         ))}
                     </div>
                 )}
@@ -1959,6 +2043,7 @@ const App = () => {
                             currency={currency}
                             expenses={allExpenses}
                             availableTags={allAvailableTags}
+                            editingExpenseId={editingExpenseId}
                         />
                     )}
                     {view === 'stats' && StatsView()}
