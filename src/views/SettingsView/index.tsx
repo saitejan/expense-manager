@@ -9,6 +9,7 @@ import { showModal } from '../../utils';
 import { saveAllExpensesToLocalStorage } from '../../services/localStorage';
 import { DonationSection } from '../../components/common/DonationSection';
 import { DONATION_CONFIG } from '../../constants/donation';
+import { GmailSyncSection } from '../../components/gmail/GmailSyncSection';
 
 interface SettingsViewProps {
   user: any;
@@ -34,6 +35,26 @@ interface SettingsViewProps {
   setView: React.Dispatch<React.SetStateAction<ViewType>>;
   handleDeleteAllData: () => void;
   exportToGoogleSheets: () => Promise<void>;
+  // Gmail sync props
+  gmailSyncProps?: {
+    isAuthenticated: boolean;
+    isGmailConnected: boolean;
+    userEmail: string | null | undefined;
+    syncStatus: any;
+    syncError: string | null;
+    lastSyncTimestamp: number | null;
+    isEnabled: boolean;
+    autoSyncFrequency: 'manual' | 'daily' | 'weekly';
+    syncDateRange: number;
+    transactionTypeFilter: 'debit' | 'credit' | 'both';
+    onSyncWithGmail: () => void;
+    onSync: () => void;
+    onDisconnect: () => void;
+    onToggleEnabled: (enabled: boolean) => void;
+    onUpdateFrequency: (frequency: 'manual' | 'daily' | 'weekly') => void;
+    onUpdateDateRange: (days: number) => void;
+    onUpdateTypeFilter: (filter: 'debit' | 'credit' | 'both') => void;
+  };
 }
 
 /**
@@ -64,6 +85,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setView,
   handleDeleteAllData,
   exportToGoogleSheets,
+  gmailSyncProps,
 }) => {
   return (
     <div className="p-4 bg-white rounded-xl shadow-lg">
@@ -124,6 +146,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </p>
           </div>
         </div>
+
+        {/* Gmail Auto-Tracking Section */}
+        {gmailSyncProps && (
+          <div className="border-b pb-6 border-gray-100">
+            <GmailSyncSection {...gmailSyncProps} />
+          </div>
+        )}
 
         {/* Donation Section */}
         <DonationSection

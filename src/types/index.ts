@@ -15,6 +15,7 @@ export interface Expense {
   dateStr: string;
   timeStr: string;
   syncStatus: 'synced' | 'pending';
+  metadata?: Record<string, any>;
 }
 
 export interface FormState {
@@ -36,6 +37,14 @@ export interface UserPreferences {
   currency: string;
   exportUrl: string;
   statsCurrency?: string;
+  gmailSync?: {
+    enabled: boolean;
+    autoSyncFrequency: 'manual' | 'daily' | 'weekly';
+    lastSyncTimestamp: number | null;
+    syncDateRange: number;
+    transactionTypeFilter: 'debit' | 'credit' | 'both';
+    ignoredEmailIds: string[];
+  };
 }
 
 export interface ExchangeRates {

@@ -7,3 +7,4 @@ export { useOnlineStatus } from './useOnlineStatus';
 export { useExpenses } from './useExpenses';
 export { useExchangeRate } from './useExchangeRate';
 export { usePWAInstall } from './usePWAInstall';
+export { useGmailSync } from './useGmailSync';

@@ -27,13 +27,22 @@ export const getFirebaseDatabase = (app: FirebaseApp): Database => {
 export const addExpenseToFirebase = async (
   db: Database,
   userId: string,
-  expense: Omit<Expense, 'id' | 'syncStatus'>
+  expense: Omit<Expense, 'id' | 'syncStatus'>,
+  customId?: string
 ): Promise<void> => {
   const userExpensesRef = ref(db, USER_EXPENSES_PATH(userId));
-  const newExpenseRef = push(userExpensesRef);
+  const newExpenseRef = customId ? ref(db, `${USER_EXPENSES_PATH(userId)}/${customId}`) : push(userExpensesRef);
   await set(newExpenseRef, {
-    ...expense,
+    userId,
+    amount: expense.amount,
+    currency: expense.currency || 'INR',
+    description: expense.description,
+    tag: expense.tag,
     timestamp: expense.timestamp.getTime(),
+    dateStr: expense.dateStr,
+    timeStr: expense.timeStr,
+    amountINR: expense.amountINR || 0,
+    amountUSD: expense.amountUSD || 0,
   });
 };
 
@@ -93,8 +102,16 @@ export const syncPendingExpensesToFirebase = async (
     const { id, syncStatus, ...firebaseExpense } = pendingExpense;
     const newExpenseRef = push(userExpensesRef);
     return set(newExpenseRef, {
-      ...firebaseExpense,
+      userId,
+      amount: firebaseExpense.amount,
+      currency: firebaseExpense.currency || 'INR',
+      description: firebaseExpense.description,
+      tag: firebaseExpense.tag,
       timestamp: pendingExpense.timestamp.getTime(),
+      dateStr: firebaseExpense.dateStr,
+      timeStr: firebaseExpense.timeStr,
+      amountINR: firebaseExpense.amountINR || 0,
+      amountUSD: firebaseExpense.amountUSD || 0,
     });
   });
 

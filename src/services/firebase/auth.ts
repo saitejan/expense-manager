@@ -20,13 +20,34 @@ export const getFirebaseAuth = (app: FirebaseApp): Auth => {
  * Signs in user with Google OAuth
  * @param auth - Firebase Auth instance
  * @param setLoading - Loading state setter
+ * @param requestGmailAccess - Whether to request Gmail read access
  */
-export const signInWithGoogle = async (auth: Auth | null, setLoading: (loading: boolean) => void) => {
+export const signInWithGoogle = async (
+  auth: Auth | null,
+  setLoading: (loading: boolean) => void,
+  requestGmailAccess: boolean = false
+) => {
   if (!auth) return;
   setLoading(true);
   try {
     const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth, provider);
+
+    // Add Gmail scope if requested
+    if (requestGmailAccess) {
+      provider.addScope('https://www.googleapis.com/auth/gmail.readonly');
+    }
+
+    const result = await signInWithPopup(auth, provider);
+
+    // Get the Google Access Token
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+    const token = credential?.accessToken;
+
+    if (token) {
+      // Store the token for API calls
+      localStorage.setItem('google_access_token', token);
+      console.log('Google Access Token stored');
+    }
   } catch (error: any) {
     console.error("Google Sign-In Failed:", error);
     showModal("Sign-In Failed", `Could not sign in with Google. Details: ${error.message || 'Unknown error'}`);

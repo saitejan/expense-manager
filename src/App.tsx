@@ -13,7 +13,7 @@ import type { Expense, ViewType } from './types';
 import { LOCAL_STORAGE_KEY } from './constants';
 
 // Hooks
-import { useSettings, useOnlineStatus, useExpenses, useExchangeRate } from './hooks';
+import { useSettings, useOnlineStatus, useExpenses, useExchangeRate, useGmailSync } from './hooks';
 
 // Services
 import {
@@ -50,6 +50,7 @@ import { SettingsView } from './views/SettingsView';
 // Components
 import { PWAInstallPrompt } from './components/PWAInstallPrompt';
 import { DonationPrompt } from './components/common/DonationPrompt';
+import { TransactionReviewModal } from './components/gmail/TransactionReviewModal';
 
 const App = () => {
   const isOnline = useOnlineStatus();
@@ -136,6 +137,31 @@ const App = () => {
     deleteExpenseFromFirebase,
     showModal,
     exchangeRates: statsExchangeRates,
+  });
+
+  const [isGmailModalOpen, setIsGmailModalOpen] = useState(false);
+
+  // Gmail sync hook
+  const {
+    isAuthenticated: isGmailAuthenticated,
+    isGmailConnected,
+    userEmail: gmailUserEmail,
+    gmailSettings,
+    syncStatus: gmailSyncStatus,
+    syncError: gmailSyncError,
+    parsedTransactions,
+    handleSyncWithGmail,
+    syncGmailTransactions,
+    disconnectGmail,
+    updateGmailSettings,
+    setParsedTransactions,
+  } = useGmailSync({
+    auth,
+    user,
+    expenses: allExpenses,
+    onTransactionsParsed: () => {
+      setIsGmailModalOpen(true);
+    },
   });
 
   // Refs for sync management
@@ -527,6 +553,46 @@ const App = () => {
     );
   };
 
+  const handleImportTransactions = async (selectedTransactions: any[]) => {
+    try {
+      setLoading(true);
+
+      for (const transaction of selectedTransactions) {
+        const expenseId = `gmail-${transaction.emailId}`;
+        const newExpense: Expense = {
+          id: expenseId,
+          userId: user?.uid || 'local',
+          amount: transaction.amount,
+          amountINR: transaction.amount, // Simplified, assume INR for now or use rates
+          amountUSD: transaction.amount / 83, // Rough estimate or use rates
+          currency: transaction.currency,
+          description: transaction.description,
+          tag: transaction.suggestedTag,
+          timestamp: new Date(transaction.timestamp),
+          dateStr: new Date(transaction.timestamp).toLocaleDateString('en-CA'),
+          timeStr: new Date(transaction.timestamp).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+          syncStatus: isAuthenticated ? 'synced' : 'pending',
+        };
+
+        if (isAuthenticated && db && user) {
+          await addExpenseToFirebase(db, user.uid, newExpense, expenseId);
+        } else {
+          setPendingExpenses(prev => [...prev, newExpense]);
+          saveAllExpensesToLocalStorage(expenses, [...pendingExpenses, newExpense]);
+        }
+      }
+
+      showModal('Import Successful', `Successfully imported ${selectedTransactions.length} transactions.`);
+      setIsGmailModalOpen(false);
+      setParsedTransactions([]);
+    } catch (error: any) {
+      console.error('Error importing transactions:', error);
+      showModal('Import Failed', `Failed to import transactions: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Render appropriate view
   const renderView = () => {
     if (loading && !user && !localStorage.getItem(LOCAL_STORAGE_KEY)) {
@@ -675,6 +741,25 @@ const App = () => {
               setView={setView}
               handleDeleteAllData={handleDeleteAllData}
               exportToGoogleSheets={exportToGoogleSheets}
+              gmailSyncProps={{
+                isAuthenticated: isGmailAuthenticated,
+                isGmailConnected: isGmailConnected,
+                userEmail: gmailUserEmail,
+                syncStatus: gmailSyncStatus,
+                syncError: gmailSyncError,
+                lastSyncTimestamp: gmailSettings.lastSyncTimestamp,
+                isEnabled: gmailSettings.enabled,
+                autoSyncFrequency: gmailSettings.autoSyncFrequency,
+                syncDateRange: gmailSettings.syncDateRange,
+                transactionTypeFilter: gmailSettings.transactionTypeFilter,
+                onSyncWithGmail: handleSyncWithGmail,
+                onSync: syncGmailTransactions,
+                onDisconnect: disconnectGmail,
+                onToggleEnabled: (enabled) => updateGmailSettings({ enabled }),
+                onUpdateFrequency: (autoSyncFrequency) => updateGmailSettings({ autoSyncFrequency }),
+                onUpdateDateRange: (syncDateRange) => updateGmailSettings({ syncDateRange }),
+                onUpdateTypeFilter: (transactionTypeFilter) => updateGmailSettings({ transactionTypeFilter }),
+              }}
             />
           )}
         </main>
@@ -718,6 +803,18 @@ const App = () => {
             </button>
           </div>
         </nav>
+        {/* Modal for Gmail Review */}
+        <TransactionReviewModal
+          isOpen={isGmailModalOpen}
+          transactions={parsedTransactions}
+          onClose={() => setIsGmailModalOpen(false)}
+          onImport={handleImportTransactions}
+          onUpdateTransaction={(index, updates) => {
+            const newTransactions = [...parsedTransactions];
+            newTransactions[index] = { ...newTransactions[index], ...updates };
+            setParsedTransactions(newTransactions);
+          }}
+        />
       </div>
     );
   };
