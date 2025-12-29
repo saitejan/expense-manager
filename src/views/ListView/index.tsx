@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { DollarSign, Search, HardDrive } from 'lucide-react';
+import { DollarSign, Search, HardDrive, Mail, ArrowRight, X } from 'lucide-react';
 import type { Expense, FilterMode } from '../../types';
 import { ExpenseItem } from '../../components/common/ExpenseItem';
 import { NetworkStatusBadge } from '../../components/common/NetworkStatusBadge';
@@ -38,6 +38,8 @@ interface ListViewProps {
   loading: boolean;
   isAuthenticated: boolean;
   pendingExpenses: Expense[];
+  isGmailConnected: boolean;
+  onSyncWithGmail: () => void;
 }
 
 /**
@@ -71,7 +73,10 @@ export const ListView: React.FC<ListViewProps> = ({
   loading,
   isAuthenticated,
   pendingExpenses,
+  isGmailConnected,
+  onSyncWithGmail,
 }) => {
+  const [showPromo, setShowPromo] = React.useState(true);
   const visibleExpenses = listViewExpenses.slice(0, visibleCount);
   const hasMore = visibleCount < listViewExpenses.length;
 
@@ -101,6 +106,39 @@ export const ListView: React.FC<ListViewProps> = ({
           <p className="text-xs opacity-80 mt-1">{listViewExpenses.length} transaction{listViewExpenses.length !== 1 ? 's' : ''}</p>
         </div>
       </div>
+
+      {/* Gmail Connect Promo (only for local users or connected users who haven't enabled Gmail sync) */}
+      {!isGmailConnected && showPromo && (
+        <div className="mb-4 p-4 bg-blue-50 border border-blue-100 rounded-lg relative overflow-hidden group">
+          <button
+            onClick={() => setShowPromo(false)}
+            className="absolute top-2 right-2 text-blue-400 hover:text-blue-600 p-1 rounded-full hover:bg-white transition-colors z-10"
+          >
+            <X size={16} />
+          </button>
+
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm text-blue-600 shrink-0">
+              <Mail size={20} />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-sm font-bold text-blue-900">Auto-track transactions?</h3>
+              <p className="text-xs text-blue-700 mt-0.5 leading-relaxed">
+                Connect your Gmail to automatically import expenses from bank and payment alerts.
+              </p>
+              <button
+                onClick={onSyncWithGmail}
+                className="mt-2 flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:text-blue-800 transition-colors group-hover:gap-2"
+              >
+                Connect Now <ArrowRight size={14} />
+              </button>
+            </div>
+          </div>
+
+          {/* Decorative background element */}
+          <div className="absolute -bottom-6 -right-6 w-24 h-24 bg-blue-100 rounded-full opacity-50 pointer-events-none" />
+        </div>
+      )}
 
       {/* Filter Controls */}
       <div className="mb-4 space-y-3 p-3 bg-gray-50 rounded-lg">
@@ -203,11 +241,10 @@ export const ListView: React.FC<ListViewProps> = ({
                 <button
                   key={tag}
                   onClick={() => toggleTagSelection(tag)}
-                  className={`px-3 py-1 text-xs font-medium rounded-full border-2 transition ${
-                    isSelected
+                  className={`px-3 py-1 text-xs font-medium rounded-full border-2 transition ${isSelected
                       ? tagColor + ' ring-2 ring-offset-1 ring-indigo-400'
                       : 'bg-white text-gray-600 border-gray-200 hover:' + tagColor
-                  }`}
+                    }`}
                 >
                   {tag}
                 </button>

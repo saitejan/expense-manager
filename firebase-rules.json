@@ -60,6 +60,27 @@
                     "statsCurrency": {
                         ".validate": "newData.isString() && newData.val().length > 0"
                     },
+                    "gmailSync": {
+                        ".validate": "newData.hasChildren(['enabled', 'autoSyncFrequency'])",
+                        "enabled": {
+                            ".validate": "newData.isBoolean()"
+                        },
+                        "autoSyncFrequency": {
+                            ".validate": "newData.val() == 'manual' || newData.val() == 'daily' || newData.val() == 'weekly'"
+                        },
+                        "lastSyncTimestamp": {
+                            ".validate": "newData.val() == null || newData.isNumber()"
+                        },
+                        "syncDateRange": {
+                            ".validate": "newData.isNumber()"
+                        },
+                        "transactionTypeFilter": {
+                            ".validate": "newData.val() == 'debit' || newData.val() == 'credit' || newData.val() == 'both'"
+                        },
+                        "ignoredEmailIds": {
+                            ".validate": "true"
+                        }
+                    },
                     "$other": {
                         ".validate": false
                     }

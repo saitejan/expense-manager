@@ -15,6 +15,7 @@ interface UseSettingsReturn {
   updateExportUrl: (newUrl: string) => void;
   updateCurrency: (newCurrency: string) => void;
   updateStatsCurrency: (newCurrency: string) => void;
+  updateGmailSyncSettings: (settings: any) => void;
 }
 
 interface UseSettingsProps {
@@ -60,6 +61,9 @@ export const useSettings = ({ user, db, isAuthenticated }: UseSettingsProps): Us
           if (preferences.statsCurrency) {
             setStatsCurrency(preferences.statsCurrency);
             localStorage.setItem('moneytrack_stats_currency', preferences.statsCurrency);
+          }
+          if (preferences.gmailSync) {
+            localStorage.setItem('expense_gmail_sync_settings', JSON.stringify(preferences.gmailSync));
           }
         }
       },
@@ -123,5 +127,19 @@ export const useSettings = ({ user, db, isAuthenticated }: UseSettingsProps): Us
     [isAuthenticated, user, db]
   );
 
-  return { exportUrl, currency, statsCurrency, updateExportUrl, updateCurrency, updateStatsCurrency };
+  const updateGmailSyncSettings = useCallback(
+    async (settings: any) => {
+      // Sync to Firebase if authenticated
+      if (isAuthenticated && user && db) {
+        try {
+          await updateUserPreferences(db, user.uid, { gmailSync: settings });
+        } catch (error) {
+          console.error('Error updating Gmail sync settings in Firebase:', error);
+        }
+      }
+    },
+    [isAuthenticated, user, db]
+  );
+
+  return { exportUrl, currency, statsCurrency, updateExportUrl, updateCurrency, updateStatsCurrency, updateGmailSyncSettings };
 };

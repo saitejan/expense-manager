@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { PlusCircle, DollarSign, Calendar, Settings } from 'lucide-react';
+import { PlusCircle, DollarSign, Calendar, Settings, Cloud } from 'lucide-react';
 
 // Types
 import type { Expense, ViewType } from './types';
@@ -67,7 +67,15 @@ const App = () => {
   const isAuthenticated = !!user;
 
   // Settings hook - needs user, db, and isAuthenticated
-  const { exportUrl, currency, statsCurrency, updateExportUrl, updateCurrency, updateStatsCurrency } = useSettings({
+  const {
+    exportUrl,
+    currency,
+    statsCurrency,
+    updateExportUrl,
+    updateCurrency,
+    updateStatsCurrency,
+    updateGmailSyncSettings
+  } = useSettings({
     user,
     db,
     isAuthenticated,
@@ -633,11 +641,21 @@ const App = () => {
         <header className="bg-white shadow-sm p-4 sticky top-0 z-10">
           <div className="max-w-4xl mx-auto flex justify-between items-center">
             <h1 className="text-2xl font-bold text-indigo-600">Money Track</h1>
-            {isAuthenticated && user?.email && (
-              <div className="text-sm text-gray-600 hidden sm:block">
-                {user.email}
-              </div>
-            )}
+            <div className="flex items-center gap-3">
+              {isAuthenticated && user?.email ? (
+                <div className="text-sm text-gray-600 hidden sm:block">
+                  {user.email}
+                </div>
+              ) : (
+                <button
+                  onClick={() => setView('auth')}
+                  className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors border border-indigo-200"
+                >
+                  <Cloud className="w-4 h-4" />
+                  Sign In
+                </button>
+              )}
+            </div>
           </div>
         </header>
 
@@ -671,6 +689,8 @@ const App = () => {
               loading={loading}
               isAuthenticated={isAuthenticated}
               pendingExpenses={pendingExpenses}
+              isGmailConnected={isGmailConnected}
+              onSyncWithGmail={handleSyncWithGmail}
             />
           )}
 
@@ -755,10 +775,26 @@ const App = () => {
                 onSyncWithGmail: handleSyncWithGmail,
                 onSync: syncGmailTransactions,
                 onDisconnect: disconnectGmail,
-                onToggleEnabled: (enabled) => updateGmailSettings({ enabled }),
-                onUpdateFrequency: (autoSyncFrequency) => updateGmailSettings({ autoSyncFrequency }),
-                onUpdateDateRange: (syncDateRange) => updateGmailSettings({ syncDateRange }),
-                onUpdateTypeFilter: (transactionTypeFilter) => updateGmailSettings({ transactionTypeFilter }),
+                onToggleEnabled: (enabled) => {
+                  const newSettings = { ...gmailSettings, enabled };
+                  updateGmailSettings({ enabled });
+                  updateGmailSyncSettings(newSettings);
+                },
+                onUpdateFrequency: (autoSyncFrequency) => {
+                  const newSettings = { ...gmailSettings, autoSyncFrequency };
+                  updateGmailSettings({ autoSyncFrequency });
+                  updateGmailSyncSettings(newSettings);
+                },
+                onUpdateDateRange: (syncDateRange) => {
+                  const newSettings = { ...gmailSettings, syncDateRange };
+                  updateGmailSettings({ syncDateRange });
+                  updateGmailSyncSettings(newSettings);
+                },
+                onUpdateTypeFilter: (transactionTypeFilter) => {
+                  const newSettings = { ...gmailSettings, transactionTypeFilter };
+                  updateGmailSettings({ transactionTypeFilter });
+                  updateGmailSyncSettings(newSettings);
+                },
               }}
             />
           )}
