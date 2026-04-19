@@ -30,12 +30,15 @@ export const DonationPrompt: React.FC<DonationPromptProps> = ({
 }) => {
     const [showPrompt, setShowPrompt] = useState(false);
     const [isExcluded, setIsExcluded] = useState(false);
+    const [exclusionChecked, setExclusionChecked] = useState(false);
 
-    // Check if user is in exclusion list (Firebase)
+    // Check if user is in exclusion list (Firebase) — must complete before showing prompt
     useEffect(() => {
         const checkExclusionList = async () => {
             if (!db || !userId || !isAuthenticated) {
+                console.log('User is not authenticated or db is not available');
                 setIsExcluded(false);
+                setExclusionChecked(true);
                 return;
             }
 
@@ -53,16 +56,19 @@ export const DonationPrompt: React.FC<DonationPromptProps> = ({
             } catch (error) {
                 console.error('Error checking exclusion list:', error);
                 setIsExcluded(false);
+            } finally {
+                setExclusionChecked(true);
             }
         };
 
+        setExclusionChecked(false);
         checkExclusionList();
     }, [db, userId, isAuthenticated]);
 
-    // Check if prompt should be shown
+    // Check if prompt should be shown — only after exclusion check completes
     useEffect(() => {
-        if (isExcluded) {
-            return; // Don't show if user is excluded
+        if (!exclusionChecked || isExcluded) {
+            return;
         }
 
         const checkShouldShowPrompt = () => {
@@ -98,7 +104,7 @@ export const DonationPrompt: React.FC<DonationPromptProps> = ({
         };
 
         checkShouldShowPrompt();
-    }, [totalTransactions, isExcluded]);
+    }, [totalTransactions, isExcluded, exclusionChecked]);
 
     const handleDismiss = () => {
         // Save dismissal data

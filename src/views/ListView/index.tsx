@@ -7,6 +7,7 @@ import React from 'react';
 import { DollarSign, Search, HardDrive, Mail, ArrowRight, X } from 'lucide-react';
 import type { Expense, FilterMode } from '../../types';
 import { ExpenseItem } from '../../components/common/ExpenseItem';
+import { ExpenseItemSkeleton } from '../../components/common/ExpenseItemSkeleton';
 import { NetworkStatusBadge } from '../../components/common/NetworkStatusBadge';
 import { formatAmount } from '../../utils';
 import { TAG_COLORS, DEFAULT_TAG_COLOR, PAGINATION_SIZE, SCROLL_THRESHOLD } from '../../constants';
@@ -267,8 +268,8 @@ export const ListView: React.FC<ListViewProps> = ({
         Showing {visibleExpenses.length} of {listViewExpenses.length} transactions
       </div>
 
-      {loading && isAuthenticated ? (
-        <div className="text-center py-8 text-gray-500">Loading cloud expenses...</div>
+      {loading && isAuthenticated && listViewExpenses.length === 0 ? (
+        <ExpenseItemSkeleton count={5} />
       ) : listViewExpenses.length === 0 ? (
         <div className="text-center py-8 text-gray-500 border border-dashed rounded-lg">
           <HardDrive className="w-8 h-8 mx-auto mb-2 text-gray-400" />
@@ -276,7 +277,7 @@ export const ListView: React.FC<ListViewProps> = ({
         </div>
       ) : (
         <div
-          className="space-y-3"
+          className="space-y-3 animate-fade-in"
           style={{ maxHeight: "50vh", overflowY: "auto" }}
           onScroll={handleScroll}
         >

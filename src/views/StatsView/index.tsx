@@ -2,12 +2,14 @@
  * Statistics view showing yearly and monthly expense summaries with trend charts
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Calendar, ArrowLeft, ArrowRight, BarChart3, Grid3x3 } from 'lucide-react';
 import type { Expense, AnnualTotal, ExchangeRates } from '../../types';
 import { ExpenseItem } from '../../components/common/ExpenseItem';
 import { formatAmount } from '../../utils';
 import { ExpenseTrendChart } from '../../components/charts/ExpenseTrendChart';
+import { CategoryBreakdown } from '../../components/charts/CategoryBreakdown';
+import { DescriptionAnalysis } from '../../components/charts/DescriptionAnalysis';
 import type { ChartType, TimeView } from '../../components/charts/ExpenseTrendChart';
 
 interface StatsViewProps {
@@ -62,6 +64,12 @@ export const StatsView: React.FC<StatsViewProps> = ({
   const [viewMode, setViewMode] = useState<'grid' | 'chart'>('grid');
   const [timeView, setTimeView] = useState<TimeView>('monthly');
   const [chartType, setChartType] = useState<ChartType>('bar');
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+
+  // Clear category selection when time view changes
+  useEffect(() => {
+    setSelectedCategory(null);
+  }, [timeView]);
 
   const handleMonthClick = (monthIndex: number) => {
     setFilterMonth(monthIndex);
@@ -163,30 +171,46 @@ export const StatsView: React.FC<StatsViewProps> = ({
     }
   }, [allExpenses, filterYear, filterMonth, timeView, annualTotals, currency]);
 
-  // Compute category breakdown data
-  const categoryData = useMemo(() => {
-    const expenses = timeView === 'yearly'
+  // Time-scoped expenses for category and description analysis
+  const scopedExpenses = useMemo(() => {
+    return timeView === 'yearly'
       ? allExpenses
       : timeView === 'monthly'
         ? allExpenses.filter(e => e.timestamp.getFullYear() === filterYear)
         : filteredExpenses;
+  }, [allExpenses, filterYear, timeView, filteredExpenses]);
 
-    const categoryTotals: { [key: string]: number } = {};
+  // Compute category breakdown data with enriched metrics
+  const categoryData = useMemo(() => {
+    const categoryTotals: Record<string, { amount: number; count: number }> = {};
 
-    expenses.forEach(expense => {
-      if (!categoryTotals[expense.tag]) {
-        categoryTotals[expense.tag] = 0;
+    scopedExpenses.forEach(expense => {
+      const tag = expense.tag;
+      if (!categoryTotals[tag]) {
+        categoryTotals[tag] = { amount: 0, count: 0 };
       }
-      categoryTotals[expense.tag] += getAmountInCurrency(expense);
+      categoryTotals[tag].amount += getAmountInCurrency(expense);
+      categoryTotals[tag].count += 1;
     });
 
+    const grandTotal = Object.values(categoryTotals).reduce((s, v) => s + v.amount, 0);
+
     return Object.entries(categoryTotals)
-      .sort(([, a], [, b]) => b - a)
-      .map(([tag, amount]) => ({
+      .sort(([, a], [, b]) => b.amount - a.amount)
+      .map(([tag, data]) => ({
         name: tag,
-        amount,
+        amount: data.amount,
+        count: data.count,
+        percentage: grandTotal > 0 ? (data.amount / grandTotal) * 100 : 0,
+        avgPerTransaction: data.count > 0 ? data.amount / data.count : 0,
       }));
-  }, [allExpenses, filterYear, timeView, filteredExpenses, currency]);
+  }, [scopedExpenses, currency]);
+
+  // Filtered expenses for selected category drill-down
+  const categoryFilteredExpenses = useMemo(() => {
+    if (!selectedCategory) return [];
+    return scopedExpenses.filter(e => e.tag === selectedCategory);
+  }, [selectedCategory, scopedExpenses]);
 
   return (
     <div className="p-4 bg-white rounded-xl shadow-lg">
@@ -324,16 +348,51 @@ export const StatsView: React.FC<StatsViewProps> = ({
             height={350}
           />
 
-          {/* Category Breakdown */}
-          {categoryData.length > 0 && (
-            <ExpenseTrendChart
-              data={categoryData}
-              chartType="pie"
-              currency={currency}
-              title={`Category Breakdown - ${timeView === 'yearly' ? 'All Time' : timeView === 'monthly' ? filterYear : filterDateString} `}
-              height={350}
-            />
+          {/* Enhanced Category Breakdown */}
+          <CategoryBreakdown
+            categoryData={categoryData}
+            currency={currency}
+            onCategoryClick={setSelectedCategory}
+            selectedCategory={selectedCategory}
+          />
+
+          {/* Category drill-down transactions */}
+          {selectedCategory && categoryFilteredExpenses.length > 0 && (
+            <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm animate-fade-in">
+              <div className="flex justify-between items-center mb-3">
+                <h4 className="text-lg font-semibold text-gray-800">
+                  {selectedCategory} Transactions ({categoryFilteredExpenses.length})
+                </h4>
+                <button
+                  onClick={() => setSelectedCategory(null)}
+                  className="text-sm text-indigo-600 hover:text-indigo-800 font-medium"
+                >
+                  Clear filter
+                </button>
+              </div>
+              <div className="space-y-3" style={{ maxHeight: '40vh', overflowY: 'auto' }}>
+                {categoryFilteredExpenses.map(expense => (
+                  <ExpenseItem
+                    key={expense.id}
+                    expense={expense}
+                    onDelete={handleDeleteExpense}
+                    onEdit={handleEditExpense}
+                    showDate
+                    currency={currency}
+                    isOnline={isOnline}
+                  />
+                ))}
+              </div>
+            </div>
           )}
+
+          {/* Description Analysis */}
+          <DescriptionAnalysis
+            expenses={scopedExpenses}
+            currency={currency}
+            getAmountInCurrency={getAmountInCurrency}
+            topN={10}
+          />
 
           {/* Summary Stats */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

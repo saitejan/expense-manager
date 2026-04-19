@@ -36,7 +36,7 @@ interface ExpenseTrendChartProps {
   height?: number;
 }
 
-const COLORS = [
+export const COLORS = [
   '#6366f1', // Indigo
   '#8b5cf6', // Purple
   '#ec4899', // Pink

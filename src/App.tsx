@@ -50,6 +50,7 @@ import { SettingsView } from './views/SettingsView';
 // Components
 import { PWAInstallPrompt } from './components/PWAInstallPrompt';
 import { DonationPrompt } from './components/common/DonationPrompt';
+import { LoadingSpinner } from './components/common/LoadingSpinner';
 import { TransactionReviewModal } from './components/gmail/TransactionReviewModal';
 
 const App = () => {
@@ -64,6 +65,7 @@ const App = () => {
 
   const [restoredData, setRestoredData] = useState<Expense[] | null>(null);
   const [user, setUser] = useState<any | null>(null);
+  const [authReady, setAuthReady] = useState(false);
   const isAuthenticated = !!user;
 
   // Settings hook - needs user, db, and isAuthenticated
@@ -214,6 +216,7 @@ const App = () => {
       if (!isFirebaseConfigured()) {
         console.warn("Firebase config not fully configured. Running in local-only mode.");
         setLoading(false);
+        setAuthReady(true);
         loadExpensesFromLocalStorage(setExpenses, setPendingExpenses);
         setView('auth');
         return;
@@ -238,12 +241,14 @@ const App = () => {
             const hasLocalData = localStorage.getItem(LOCAL_STORAGE_KEY);
             setView(hasLocalData ? 'list' : 'auth');
           }
+          setAuthReady(true);
         });
 
         return () => unsubscribe();
       } catch (error) {
         console.error("Firebase initialization failed. Running in local-only mode.", error);
         setLoading(false);
+        setAuthReady(true);
         loadExpensesFromLocalStorage(setExpenses, setPendingExpenses);
         setView('auth');
       }
@@ -607,7 +612,7 @@ const App = () => {
       return (
         <div className="flex items-center justify-center h-screen">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+            <LoadingSpinner size="lg" className="text-indigo-600 mx-auto h-12 w-12" />
             <p className="mt-4 text-gray-600">Loading...</p>
           </div>
         </div>
@@ -629,13 +634,15 @@ const App = () => {
         {/* PWA Install Prompt */}
         <PWAInstallPrompt />
 
-        {/* Donation Prompt */}
-        <DonationPrompt
-          userId={user?.uid || null}
-          isAuthenticated={isAuthenticated}
-          totalTransactions={allExpenses.length}
-          db={db}
-        />
+        {/* Donation Prompt — only mount after auth state is settled */}
+        {authReady && (
+          <DonationPrompt
+            userId={user?.uid || null}
+            isAuthenticated={isAuthenticated}
+            totalTransactions={allExpenses.length}
+            db={db}
+          />
+        )}
 
         {/* Header */}
         <header className="bg-white shadow-sm p-4 sticky top-0 z-10">
