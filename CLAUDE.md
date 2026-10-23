@@ -162,7 +162,7 @@ Ids: push keys, or deterministic `gmail-{emailId}`, `sms-{msgId}`, `rec-{ruleId}
 
 ### UserPreferences (Firebase path: `users/{uid}/preferences`)
 
-Currency, exportUrl, statsCurrency, gmailSync settings, `budgets` (`{ currency, total?, tags?: [{tag, amount}] }`), `trips`, `smsInboxToken`. Theme is per device (localStorage only).
+Currency, exportUrl, statsCurrency, gmailSync settings, `budgets` (`{ currency, total?, tags?: [{tag, amount}] }`), `trips`, `smsInboxToken`, `merchantAliases` (`{ [merchantKey]: { description, tag } }`, learned when a payee is renamed during import review). Theme is per device (localStorage only).
 
 ## External Integrations
 

@@ -8,11 +8,11 @@ import type { Database } from 'firebase/database';
 import type { Expense, FormState, FilterMode, AnnualTotal, ExchangeRates, Trip } from '../types';
 import { TAGS, PAGINATION_SIZE } from '../constants';
 import { timestampToDate } from '../utils';
-import { parseQuickEntry, suggestTagFromHistory } from '../utils/quickAdd';
+import { parseQuickEntry } from '../utils/quickAdd';
 import { findTripIdForDate } from '../utils/trips';
 import { compressImage } from '../utils/image';
 import { parseTransactionEmail } from '../services/gmail/emailParser';
-import { suggestTag } from '../services/gmail/tagMapper';
+import { guessTag } from '../services/gmail/tagMapper';
 import { getReceipt } from '../services/firebase/database';
 
 type ExpenseInput = Omit<Expense, 'id' | 'syncStatus'>;
@@ -32,13 +32,6 @@ const createEmptyForm = (currency: string, trips: Record<string, Trip>): FormSta
   };
 };
 
-/** Keyword tag guess; undefined instead of the catch-all 'Other' so the current tag is kept */
-const guessTag = (description: string, expenses: Expense[]): string | undefined => {
-  const fromHistory = suggestTagFromHistory(description, expenses);
-  if (fromHistory) return fromHistory;
-  const keywordTag = suggestTag(description);
-  return keywordTag === 'Other' ? undefined : keywordTag;
-};
 
 interface UseExpensesParams {
   expenses: Expense[];

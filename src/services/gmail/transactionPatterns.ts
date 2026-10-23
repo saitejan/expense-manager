@@ -5,11 +5,11 @@
 
 import type { TransactionPattern } from '../../types/gmail';
 
-// Common regex patterns
-const AMOUNT_PATTERNS = {
-    INR: /(?:Rs\.?|INR|₹)\s*([0-9,]+(?:\.[0-9]{2})?)/i,
-    USD: /(?:USD|\$)\s*([0-9,]+(?:\.[0-9]{2})?)/i,
-    GENERIC: /(?:amount|amt|value)[\s:]*(?:Rs\.?|INR|₹|\$|USD)?\s*([0-9,]+(?:\.[0-9]{2})?)/i,
+// Common regex patterns. Paise may have one digit: "INR 1062.1", "Rs.946.2"
+export const AMOUNT_PATTERNS = {
+    INR: /(?:Rs\.?|INR|₹)\s*([0-9,]+(?:\.[0-9]{1,2})?)/i,
+    USD: /(?:USD|\$)\s*([0-9,]+(?:\.[0-9]{1,2})?)/i,
+    GENERIC: /(?:amount|amt|value)[\s:]*(?:Rs\.?|INR|₹|\$|USD)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i,
 };
 
 const TRANSACTION_TYPE_PATTERNS = {

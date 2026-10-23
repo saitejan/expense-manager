@@ -2,7 +2,8 @@
 import assert from 'node:assert/strict';
 import { parseQuickEntry, suggestTagFromHistory, getFavorites } from '../src/utils/quickAdd.ts';
 import { getDueMonths, dueDay, MAX_CATCH_UP_MONTHS } from '../src/utils/recurring.ts';
-import { pushIdTime, findPossibleDuplicate } from '../src/utils/transactions.ts';
+import { pushIdTime, findPossibleDuplicate, merchantKey, applyMerchantAliases, learnMerchantAliases } from '../src/utils/transactions.ts';
+import type { ParsedTransaction } from '../src/types/gmail.ts';
 import { findTripIdForDate } from '../src/utils/trips.ts';
 import type { Expense } from '../src/types/index.ts';
 
@@ -14,6 +15,8 @@ assert.deepEqual(parseQuickEntry('Uber Rs. 320.50'), { amount: '320.50', descrip
 assert.deepEqual(parseQuickEntry('  99  '), { amount: '99', description: '' });
 assert.deepEqual(parseQuickEntry('milk'), { amount: '', description: 'milk' });
 assert.deepEqual(parseQuickEntry('rspca 20'), { amount: '20', description: 'rspca' });
+assert.deepEqual(parseQuickEntry('450 for Swiggy'), { amount: '450', description: 'Swiggy' }); // spoken via Siri
+assert.deepEqual(parseQuickEntry('600 bike petrol'), { amount: '600', description: 'bike petrol' });
 
 const at = (iso: string, description: string, tag: string, amount = 100, type?: 'credit'): Expense => ({
   id: iso + description, userId: 'u', amount, currency: 'INR', amountINR: amount, amountUSD: amount / 88,
@@ -29,6 +32,10 @@ const history = [
 assert.equal(suggestTagFromHistory('milk', history), 'Baby'); // newest exact match wins
 assert.equal(suggestTagFromHistory('swiggy', history), 'Food'); // first-word match
 assert.equal(suggestTagFromHistory('petrol', history), undefined);
+const kpnHistory = [at('2026-10-15T10:00:00', 'Shopping in kpn fresh', 'Shopping'), at('2026-10-14T10:00:00', 'in mall', 'Me')];
+assert.equal(suggestTagFromHistory('kpn', kpnHistory), 'Shopping'); // whole word inside an older description
+assert.equal(suggestTagFromHistory('in', kpnHistory), 'Me'); // short word: first-word match only, no contains search
+assert.equal(suggestTagFromHistory('kp', kpnHistory), undefined);
 const favorites = getFavorites(history, new Date('2026-10-23T12:00:00'));
 assert.deepEqual(favorites.map(f => [f.description, f.tag, f.amount]), [['Milk', 'Baby', 60]]); // income and one-offs excluded
 
@@ -61,6 +68,21 @@ const ts = new Date('2026-10-20T20:00:00').getTime();
 assert.equal(findPossibleDuplicate(450.4, ts, history)?.description, 'Swiggy dinner');
 assert.equal(findPossibleDuplicate(450, ts + 3 * 24 * 3600 * 1000, history), undefined);
 assert.equal(findPossibleDuplicate(451, ts, history), undefined);
+
+// Remembered payee names
+assert.equal(merchantKey('Mr K. KAMALAKANNAN'), 'mr_k_kamalakannan');
+assert.equal(merchantKey('..KHT MOTORS/MAHAD_'), 'kht_motors_mahad');
+const sms = (merchantName: string | undefined, description: string, suggestedTag: string): ParsedTransaction => ({
+  emailId: description, amount: 100, currency: 'INR', description, suggestedTag, transactionType: 'debit',
+  timestamp: 0, merchantName, rawEmailSubject: '', source: 'sms',
+});
+const aliases = { shanthi: { description: 'Maid salary', tag: 'Bills' } };
+assert.deepEqual(applyMerchantAliases([sms('Shanthi', 'Shanthi', 'Other')], aliases).map(t => [t.description, t.suggestedTag]), [['Maid salary', 'Bills']]);
+assert.deepEqual(applyMerchantAliases([sms(undefined, 'swiggy', 'Food')], aliases)[0].description, 'swiggy'); // quick entries untouched
+assert.deepEqual(learnMerchantAliases([sms('Kailas Sahu', 'Vegetables', 'Food')], {}), { kailas_sahu: { description: 'Vegetables', tag: 'Food' } }); // renamed
+assert.deepEqual(learnMerchantAliases([sms('AMAZON', 'AMAZON', 'Shopping')], {}), {}); // not renamed, nothing to remember
+assert.deepEqual(learnMerchantAliases([sms('Shanthi', 'Maid salary', 'Bills')], aliases), {}); // unchanged alias, no write
+assert.deepEqual(learnMerchantAliases([sms('Shanthi', 'Maid salary', 'Wife')], aliases), { shanthi: { description: 'Maid salary', tag: 'Wife' } }); // tag changed
 
 // Trips
 const trips = { goa: { name: 'Goa', startDate: '2026-12-10', endDate: '2026-12-15', currency: 'INR' } };

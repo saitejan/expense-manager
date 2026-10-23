@@ -3,6 +3,9 @@
  * Maps merchant names and descriptions to expense tags
  */
 
+import type { Expense } from '../../types';
+import { suggestTagFromHistory } from '../../utils/quickAdd';
+
 
 interface TagRule {
     tag: string;
@@ -75,6 +78,18 @@ export const suggestTag = (text: string): string => {
     }
 
     return 'Other';
+};
+
+/**
+ * Tag guess for a description: the user's own history first, then keyword rules.
+ * undefined instead of the catch-all 'Other' so callers can keep their current tag.
+ * @param expenses - Sorted newest first
+ */
+export const guessTag = (description: string, expenses: Expense[]): string | undefined => {
+    const fromHistory = suggestTagFromHistory(description, expenses);
+    if (fromHistory) return fromHistory;
+    const keywordTag = suggestTag(description);
+    return keywordTag === 'Other' ? undefined : keywordTag;
 };
 
 /**

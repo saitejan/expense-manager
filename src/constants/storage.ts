@@ -14,3 +14,4 @@ export const STATS_CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 export const THEME_KEY = 'moneytrack_theme';
 export const BUDGETS_KEY = 'moneytrack_budgets';
 export const TRIPS_KEY = 'moneytrack_trips';
+export const MERCHANT_ALIASES_KEY = 'moneytrack_merchant_aliases';

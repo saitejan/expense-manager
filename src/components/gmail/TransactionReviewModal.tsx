@@ -179,9 +179,9 @@ export const TransactionReviewModal: React.FC<TransactionReviewModalProps> = ({
                         >
                             {transactions.every(t => t.selected) ? 'Deselect All' : 'Select All'}
                         </button>
-                        {mode === 'sms' && (
-                            <p className="text-xs text-gray-500 mt-1">Unselected messages are discarded.</p>
-                        )}
+                        <p className="text-xs text-gray-500 mt-1">
+                            Renamed payees are remembered.{mode === 'sms' && ' Unselected messages are discarded.'}
+                        </p>
                     </div>
                     <div className="flex gap-3">
                         <button

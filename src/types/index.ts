@@ -59,6 +59,13 @@ export interface UserPreferences {
   trips?: Record<string, Trip>;
   /** Secret capability token for the iOS Shortcuts SMS inbox */
   smsInboxToken?: string;
+  /** What the user calls a payee, keyed by merchantKey(name): "Shanthi" → "Maid salary" */
+  merchantAliases?: Record<string, MerchantAlias>;
+}
+
+export interface MerchantAlias {
+  description: string;
+  tag: string;
 }
 
 /** Monthly budgets. Amounts are in `currency`. */

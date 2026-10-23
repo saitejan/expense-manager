@@ -4,7 +4,7 @@
  */
 
 import type { ParsedTransaction } from '../../types/gmail';
-import { findMatchingPattern } from './transactionPatterns';
+import { findMatchingPattern, AMOUNT_PATTERNS } from './transactionPatterns';
 import { suggestTag } from './tagMapper';
 
 /**
@@ -39,11 +39,20 @@ const FALLBACK_MERCHANT_PATTERNS = [
     /\b(?:to|at)\s+(?:VPA\s+)?([A-Za-z0-9._-]+)@[A-Za-z]+/i, // UPI id: "to VPA zomato@ybl", "to swiggy@icici"
     /UPI\/P2[AM]\/\d+\/([^/\s]+)/i, // Axis: "UPI/P2M/123456/SWIGGY"
     /;\s*([A-Za-z0-9 .&'-]+?)\s+credited/i, // ICICI: "on 23-Oct-26; SWIGGY credited"
+    /\bfor\s+(?!rs\b|rs\.|inr\b|₹)([A-Za-z][A-Za-z0-9 .&'-]*?)(?=\s+(?:on|via|ref|upi|using)\b|[,;]|\.(?:\s|$)|$)/i, // "debited for swiggy"
+    // Card/UPI names with symbols the bank patterns reject: "At ..KHT MOTORS MAHAD_ On", "at\nCAS*INNOVAT."
+    /\b(?:at|to)\s+([A-Za-z0-9.*_&'\- ]+?)(?=\s+(?:on|ref|refno|via|using|dated|upi)\b|\s*\n|\.?\s*$)/i,
 ];
 
-/** "VPA zomato@ybl" → "zomato" */
+/** "VPA zomato@ybl" → "zomato", "FLIPKART1231144" → "FLIPKART", "..KHT MOTORS MAHAD_" → "KHT MOTORS MAHAD" */
 const cleanMerchant = (merchant: string): string =>
-    merchant.replace(/^VPA\s+/i, '').replace(/@[A-Za-z]+$/, '').replace(/[\s.,;:-]+$/, '').trim();
+    merchant
+        .replace(/^VPA\s+/i, '')
+        .replace(/@[A-Za-z]+$/, '')
+        .replace(/(?<=[A-Za-z])\d{4,}$/, '') // terminal/store id glued to the name
+        .replace(/^[\s.*_-]+|[\s.,;:*_-]+$/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
 
 /**
  * Extract merchant name from email body
@@ -75,7 +84,10 @@ export const parseTransactionEmail = (email: {
         if (!pattern) return null;
 
         // Extract amount (SBI-style SMS omit the currency: "debited by 450.0")
+        // Card patterns look for "amount ..."; card SMS say "Spent INR 1062.1", so try the plain currency form too
         const amountMatch = body.match(pattern.bodyPatterns.amount)
+            || body.match(AMOUNT_PATTERNS.INR)
+            || body.match(/\b([0-9][0-9,]*(?:\.[0-9]+)?)\s*(?:rs\.?|inr|₹)(?![a-z])/i) // "10inr", "450 INR"
             || body.match(/\b(?:debited|credited)\s+(?:by|for|with)\s+([0-9,]+(?:\.[0-9]+)?)/i);
         if (!amountMatch || !amountMatch[1]) return null;
 

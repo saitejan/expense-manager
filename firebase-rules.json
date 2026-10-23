@@ -142,6 +142,20 @@
                     "smsInboxToken": {
                         ".validate": "newData.isString() && newData.val().length >= 32"
                     },
+                    "merchantAliases": {
+                        "$key": {
+                            ".validate": "$key.length <= 60 && newData.hasChildren(['description', 'tag'])",
+                            "description": {
+                                ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 200"
+                            },
+                            "tag": {
+                                ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 60"
+                            },
+                            "$other": {
+                                ".validate": false
+                            }
+                        }
+                    },
                     "$other": {
                         ".validate": false
                     }

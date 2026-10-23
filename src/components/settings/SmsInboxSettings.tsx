@@ -72,9 +72,18 @@ export const SmsInboxSettings: React.FC<SmsInboxSettingsProps> = ({ isAuthentica
             <li>Set <b>Message Contains</b> to <code>debited</code>. Choose <b>Run Immediately</b> and turn off <b>Notify When Run</b>.</li>
             <li>Add the action <b>Get Contents of URL</b> and paste the URL above.</li>
             <li>Tap <b>Show More</b>: Method <b>POST</b>, Request Body <b>JSON</b>, add a Text field named <code>text</code> with the value <b>Shortcut Input</b> (Message).</li>
-            <li>Repeat with <code>spent</code> if your card alerts say "spent".</li>
+            <li>Repeat for the other words your banks use, e.g. <code>Spent</code> (card alerts) and <code>Sent Rs</code> (UPI).</li>
           </ol>
           <p className="text-xs text-gray-500">Menu names can differ slightly between iOS versions.</p>
+
+          <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-700">
+            <p className="font-semibold mb-1">Log by voice (Action Button, Back Tap, Siri)</p>
+            <p>
+              New shortcut named <b>Log Expense</b>: add <b>Dictate Text</b>, then the same <b>Get Contents of URL</b> action
+              with <code>text</code> = <b>Dictated Text</b>. Assign it to the Action Button or Back Tap → Double Tap, then say
+              "450 swiggy". With Siri: "Hey Siri, Log Expense", then "450 swiggy".
+            </p>
+          </div>
 
           <p className="text-sm text-gray-600">Waiting for review: <b>{pendingCount}</b></p>
 

@@ -41,7 +41,7 @@ import { getExchangeRates, convertToBaseAmounts } from './services/exchangeRate'
 
 // Utils
 import { showModal } from './utils';
-import { markPossibleDuplicates } from './utils/transactions';
+import { markPossibleDuplicates, applyMerchantAliases, learnMerchantAliases } from './utils/transactions';
 import { findTripIdForDate } from './utils/trips';
 
 // Views
@@ -81,6 +81,7 @@ const App = () => {
     budgets,
     trips,
     smsInboxToken,
+    merchantAliases,
     theme,
     updateExportUrl,
     updateCurrency,
@@ -89,6 +90,7 @@ const App = () => {
     updateBudgets,
     updateTrips,
     updateTheme,
+    rememberMerchantAliases,
   } = useSettings({
     user,
     db,
@@ -198,7 +200,7 @@ const App = () => {
     user,
     expenses: allExpenses,
     onTransactionsParsed: (transactions) => {
-      setParsedTransactions(markPossibleDuplicates(transactions, allExpenses));
+      setParsedTransactions(markPossibleDuplicates(applyMerchantAliases(transactions, merchantAliases), allExpenses));
       setReviewSource('gmail');
     },
   });
@@ -212,10 +214,10 @@ const App = () => {
     disableInbox,
     deleteMessages: deleteSmsMessages,
     buildReviewTransactions: buildSmsReviewTransactions,
-  } = useSmsInbox({ db, user, token: smsInboxToken });
+  } = useSmsInbox({ db, user, token: smsInboxToken, expenses: allExpenses });
 
   const openSmsReview = () => {
-    setSmsTransactions(markPossibleDuplicates(buildSmsReviewTransactions(), allExpenses));
+    setSmsTransactions(markPossibleDuplicates(applyMerchantAliases(buildSmsReviewTransactions(), merchantAliases), allExpenses));
     setReviewSource('sms');
   };
 
@@ -690,6 +692,9 @@ const App = () => {
           return newPending;
         });
       }
+
+      // "Shanthi" renamed to "Maid salary" comes in pre-named next time
+      rememberMerchantAliases(learnMerchantAliases(selectedTransactions, merchantAliases));
 
       // Every reviewed SMS leaves the inbox: imported ones are now expenses, unselected ones were discarded
       if (source === 'sms') {

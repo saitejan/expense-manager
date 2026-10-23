@@ -5,9 +5,9 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import type { Database } from 'firebase/database';
-import { EXPORT_URL_KEY, CURRENCY_KEY, DEFAULT_CURRENCY, CURRENCY_CODE_LENGTH, THEME_KEY, BUDGETS_KEY, TRIPS_KEY } from '../constants';
+import { EXPORT_URL_KEY, CURRENCY_KEY, DEFAULT_CURRENCY, CURRENCY_CODE_LENGTH, THEME_KEY, BUDGETS_KEY, TRIPS_KEY, MERCHANT_ALIASES_KEY } from '../constants';
 import { updateUserPreferences, subscribeToUserPreferences } from '../services/firebase/database';
-import type { Budgets, Trip } from '../types';
+import type { Budgets, MerchantAlias, Trip } from '../types';
 
 export type ThemePreference = 'system' | 'light' | 'dark';
 
@@ -18,6 +18,7 @@ interface UseSettingsReturn {
   budgets: Budgets | null;
   trips: Record<string, Trip>;
   smsInboxToken: string | null;
+  merchantAliases: Record<string, MerchantAlias>;
   theme: ThemePreference;
   updateExportUrl: (newUrl: string) => void;
   updateCurrency: (newCurrency: string) => void;
@@ -26,6 +27,7 @@ interface UseSettingsReturn {
   updateBudgets: (budgets: Budgets | null) => void;
   updateTrips: (trips: Record<string, Trip>) => void;
   updateTheme: (theme: ThemePreference) => void;
+  rememberMerchantAliases: (learned: Record<string, MerchantAlias>) => void;
 }
 
 const readJson = <T,>(key: string, fallback: T): T => {
@@ -67,6 +69,7 @@ export const useSettings = ({ user, db, isAuthenticated }: UseSettingsProps): Us
   const [budgets, setBudgets] = useState<Budgets | null>(() => readJson(BUDGETS_KEY, null));
   const [trips, setTrips] = useState<Record<string, Trip>>(() => readJson(TRIPS_KEY, {}));
   const [smsInboxToken, setSmsInboxToken] = useState<string | null>(null);
+  const [merchantAliases, setMerchantAliases] = useState<Record<string, MerchantAlias>>(() => readJson(MERCHANT_ALIASES_KEY, {}));
   const [theme, setTheme] = useState<ThemePreference>(() => (localStorage.getItem(THEME_KEY) as ThemePreference) || 'system');
 
   // Subscribe to Firebase preferences when authenticated
@@ -102,6 +105,9 @@ export const useSettings = ({ user, db, isAuthenticated }: UseSettingsProps): Us
         setBudgets(cloudBudgets);
         setTrips(cloudTrips);
         setSmsInboxToken(preferences?.smsInboxToken ?? null);
+        const cloudAliases = preferences?.merchantAliases ?? {};
+        setMerchantAliases(cloudAliases);
+        localStorage.setItem(MERCHANT_ALIASES_KEY, JSON.stringify(cloudAliases));
         localStorage.setItem(BUDGETS_KEY, JSON.stringify(cloudBudgets));
         localStorage.setItem(TRIPS_KEY, JSON.stringify(cloudTrips));
       },
@@ -210,6 +216,23 @@ export const useSettings = ({ user, db, isAuthenticated }: UseSettingsProps): Us
     [isAuthenticated, user, db]
   );
 
+  const rememberMerchantAliases = useCallback(
+    async (learned: Record<string, MerchantAlias>) => {
+      if (Object.keys(learned).length === 0) return;
+      const merged = { ...merchantAliases, ...learned };
+      setMerchantAliases(merged);
+      localStorage.setItem(MERCHANT_ALIASES_KEY, JSON.stringify(merged));
+      if (isAuthenticated && user && db) {
+        try {
+          await updateUserPreferences(db, user.uid, { merchantAliases: merged });
+        } catch (error) {
+          console.error('Error saving merchant names in Firebase:', error);
+        }
+      }
+    },
+    [merchantAliases, isAuthenticated, user, db]
+  );
+
   // Per device on purpose: phone and laptop may want different themes
   const updateTheme = useCallback((newTheme: ThemePreference) => {
     setTheme(newTheme);
@@ -224,6 +247,7 @@ export const useSettings = ({ user, db, isAuthenticated }: UseSettingsProps): Us
     budgets,
     trips,
     smsInboxToken,
+    merchantAliases,
     theme,
     updateExportUrl,
     updateCurrency,
@@ -232,5 +256,6 @@ export const useSettings = ({ user, db, isAuthenticated }: UseSettingsProps): Us
     updateBudgets,
     updateTrips,
     updateTheme,
+    rememberMerchantAliases,
   };
 };

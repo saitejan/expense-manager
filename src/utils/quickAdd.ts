@@ -14,24 +14,32 @@ const AMOUNT_LAST = new RegExp(String.raw`^(.+?)\s+${NUMBER}$`, 'i');
  */
 export const parseQuickEntry = (text: string): { amount: string; description: string } => {
   const trimmed = text.trim();
+  // Spoken entries often say "450 for swiggy"
+  const clean = (description: string) => description.trim().replace(/^(?:for|on|at)\s+/i, '');
   const first = trimmed.match(AMOUNT_FIRST);
-  if (first) return { amount: first[1].replace(/,/g, ''), description: (first[2] || '').trim() };
+  if (first) return { amount: first[1].replace(/,/g, ''), description: clean(first[2] || '') };
   const last = trimmed.match(AMOUNT_LAST);
-  if (last) return { amount: last[2].replace(/,/g, ''), description: last[1].trim() };
+  if (last) return { amount: last[2].replace(/,/g, ''), description: clean(last[1]) };
   return { amount: '', description: trimmed };
 };
 
 /**
- * Tag used last time for this description (exact match first, then same first word)
+ * Tag used last time for this description: exact match, then same first word,
+ * then any past description containing that word ("kpn" → "Shopping in kpn fresh")
  * @param expenses - Sorted newest first
  */
 export const suggestTagFromHistory = (description: string, expenses: Expense[]): string | undefined => {
   const wanted = description.trim().toLowerCase();
   if (!wanted) return undefined;
+  const words = (text: string) => text.trim().toLowerCase().split(/\s+/);
   const exact = expenses.find(e => e.description.trim().toLowerCase() === wanted);
   if (exact) return exact.tag;
-  const firstWord = wanted.split(/\s+/)[0];
-  return expenses.find(e => e.description.trim().toLowerCase().split(/\s+/)[0] === firstWord)?.tag;
+  const firstWord = words(wanted)[0];
+  const sameStart = expenses.find(e => words(e.description)[0] === firstWord);
+  if (sameStart) return sameStart.tag;
+  // Short words ("in", "to") would match almost anything
+  if (firstWord.length < 3) return undefined;
+  return expenses.find(e => e.type !== 'credit' && words(e.description).includes(firstWord))?.tag;
 };
 
 export interface Favorite {
