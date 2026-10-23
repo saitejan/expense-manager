@@ -22,6 +22,9 @@ export interface ParsedTransaction {
     merchantName?: string;
     rawEmailSubject: string;
     selected?: boolean; // for UI selection
+    source?: 'gmail' | 'sms';
+    /** Description of an existing expense that looks like the same transaction */
+    duplicateOf?: string;
 }
 
 export interface GmailAuthState {

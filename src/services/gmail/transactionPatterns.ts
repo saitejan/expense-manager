@@ -29,7 +29,7 @@ export const BANK_PATTERNS: TransactionPattern[] = [
         bodyPatterns: {
             amount: AMOUNT_PATTERNS.INR,
             transactionType: TRANSACTION_TYPE_PATTERNS.DEBIT,
-            merchant: /(?:at|to)\s+([A-Za-z0-9\s@\-\.]+?)(?:\s*(?:on|for|dated|at|date|[\.!,:]|$))/i,
+            merchant: /\b(?:at|to)\s+([A-Za-z0-9\s@\-\.]+?)(?:\s+(?:on|for|dated|at|date)\b|\s*[\.!,:]|$)/i,
         },
         currencySymbol: 'INR',
     },
@@ -43,7 +43,7 @@ export const BANK_PATTERNS: TransactionPattern[] = [
         bodyPatterns: {
             amount: AMOUNT_PATTERNS.INR,
             transactionType: TRANSACTION_TYPE_PATTERNS.DEBIT,
-            merchant: /(?:at|to)\s+([A-Za-z0-9\s@\-\.]+?)(?:\s*(?:on|for|dated|at|date|[\.!,:]|$))/i,
+            merchant: /\b(?:at|to)\s+([A-Za-z0-9\s@\-\.]+?)(?:\s+(?:on|for|dated|at|date)\b|\s*[\.!,:]|$)/i,
         },
         currencySymbol: 'INR',
     },
@@ -58,7 +58,7 @@ export const BANK_PATTERNS: TransactionPattern[] = [
         bodyPatterns: {
             amount: AMOUNT_PATTERNS.INR,
             transactionType: TRANSACTION_TYPE_PATTERNS.DEBIT,
-            merchant: /(?:at|to)\s+([A-Z0-9\s]+?)(?:\s+on|\s+dated|\.|$)/i,
+            merchant: /\b(?:at|to)\s+([A-Z0-9\s]+?)(?:\s+(?:on|dated)\b|\.|$)/i,
         },
         currencySymbol: 'INR',
     },
@@ -72,7 +72,7 @@ export const BANK_PATTERNS: TransactionPattern[] = [
         bodyPatterns: {
             amount: AMOUNT_PATTERNS.INR,
             transactionType: TRANSACTION_TYPE_PATTERNS.DEBIT,
-            merchant: /(?:at|to)\s+([A-Z0-9\s]+?)(?:\s+on|\s+dated|\.|$)/i,
+            merchant: /\b(?:at|to)\s+([A-Z0-9\s]+?)(?:\s+(?:on|dated)\b|\.|$)/i,
         },
         currencySymbol: 'INR',
     },
@@ -86,7 +86,7 @@ export const BANK_PATTERNS: TransactionPattern[] = [
         bodyPatterns: {
             amount: AMOUNT_PATTERNS.INR,
             transactionType: TRANSACTION_TYPE_PATTERNS.DEBIT,
-            merchant: /(?:at|to)\s+([A-Z0-9\s]+?)(?:\s+on|\s+dated|\.|$)/i,
+            merchant: /\b(?:at|to)\s+([A-Z0-9\s]+?)(?:\s+(?:on|dated)\b|\.|$)/i,
         },
         currencySymbol: 'INR',
     },
@@ -104,7 +104,7 @@ export const PAYMENT_APP_PATTERNS: TransactionPattern[] = [
         bodyPatterns: {
             amount: AMOUNT_PATTERNS.INR,
             transactionType: TRANSACTION_TYPE_PATTERNS.DEBIT,
-            merchant: /(?:to|from)\s+([A-Za-z0-9\s]+?)(?:\s+on|\s+for|\.|$)/i,
+            merchant: /\b(?:to|from)\s+([A-Za-z0-9\s]+?)(?:\s+(?:on|for)\b|\.|$)/i,
         },
         currencySymbol: 'INR',
     },
@@ -118,7 +118,7 @@ export const PAYMENT_APP_PATTERNS: TransactionPattern[] = [
         bodyPatterns: {
             amount: AMOUNT_PATTERNS.INR,
             transactionType: TRANSACTION_TYPE_PATTERNS.DEBIT,
-            merchant: /(?:to|at)\s+([A-Za-z0-9\s]+?)(?:\s+on|\s+for|\.|$)/i,
+            merchant: /\b(?:to|at)\s+([A-Za-z0-9\s]+?)(?:\s+(?:on|for)\b|\.|$)/i,
         },
         currencySymbol: 'INR',
     },
@@ -132,7 +132,7 @@ export const PAYMENT_APP_PATTERNS: TransactionPattern[] = [
         bodyPatterns: {
             amount: AMOUNT_PATTERNS.INR,
             transactionType: TRANSACTION_TYPE_PATTERNS.DEBIT,
-            merchant: /(?:to|at)\s+([A-Za-z0-9\s]+?)(?:\s+on|\s+for|\.|$)/i,
+            merchant: /\b(?:to|at)\s+([A-Za-z0-9\s]+?)(?:\s+(?:on|for)\b|\.|$)/i,
         },
         currencySymbol: 'INR',
     },
@@ -146,7 +146,7 @@ export const PAYMENT_APP_PATTERNS: TransactionPattern[] = [
         bodyPatterns: {
             amount: AMOUNT_PATTERNS.INR,
             transactionType: TRANSACTION_TYPE_PATTERNS.DEBIT,
-            merchant: /(?:at|to|payment of .* at)\s+([A-Za-z0-9\s&\.\-\_]+?)(?:\s*(?:on|for|dated|at|date|[\.!,:]|$))/i,
+            merchant: /\b(?:at|to|payment of .* at)\s+([A-Za-z0-9\s&\.\-\_]+?)(?:\s+(?:on|for|dated|at|date)\b|\s*[\.!,:]|$)/i,
         },
         currencySymbol: 'INR',
         defaultTag: 'Food',
@@ -157,7 +157,7 @@ export const PAYMENT_APP_PATTERNS: TransactionPattern[] = [
         bodyPatterns: {
             amount: AMOUNT_PATTERNS.INR,
             transactionType: TRANSACTION_TYPE_PATTERNS.DEBIT,
-            merchant: /(?:at|to)\s+([A-Za-z0-9\s&]+?)(?:\s*(?:on|for|dated|at|date|[\.!,]|$))/i,
+            merchant: /\b(?:at|to)\s+([A-Za-z0-9\s&]+?)(?:\s+(?:on|for|dated|at|date)\b|\s*[\.!,]|$)/i,
         },
         currencySymbol: 'INR',
         defaultTag: 'Food',
@@ -175,7 +175,7 @@ export const CREDIT_CARD_PATTERNS: TransactionPattern[] = [
         bodyPatterns: {
             amount: AMOUNT_PATTERNS.GENERIC,
             transactionType: TRANSACTION_TYPE_PATTERNS.DEBIT,
-            merchant: /(?:at|to)\s+([A-Z0-9\s]+?)(?:\s+on|\s+dated|\.|$)/i,
+            merchant: /\b(?:at|to)\s+([A-Z0-9\s]+?)(?:\s+(?:on|dated)\b|\.|$)/i,
         },
     },
 ];
@@ -203,7 +203,7 @@ export const ALL_TRANSACTION_PATTERNS: TransactionPattern[] = [
         bodyPatterns: {
             amount: AMOUNT_PATTERNS.INR, // Default to INR for generic
             transactionType: TRANSACTION_TYPE_PATTERNS.DEBIT,
-            merchant: /(?:at|to|from|towards)\s+([A-Za-z0-9\s&]+?)(?:\s*(?:on|for|dated|at|date|[\.!,]|$))/i,
+            merchant: /\b(?:at|to|from|towards)\s+([A-Za-z0-9\s&]+?)(?:\s+(?:on|for|dated|at|date|ref|refno)\b|\s*[\.!,]|$)/i,
         },
     },
 ];

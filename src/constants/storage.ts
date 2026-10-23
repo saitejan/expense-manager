@@ -10,3 +10,7 @@ export const EXCHANGE_RATES_KEY = 'moneytrack_exchange_rates';
 export const STATS_CURRENCY_KEY = 'moneytrack_stats_currency';
 export const CREATION_CACHE_DURATION = 60 * 60 * 1000; // 1 hour
 export const STATS_CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
+/** Read by the pre-paint script in index.html too; keep both in sync */
+export const THEME_KEY = 'moneytrack_theme';
+export const BUDGETS_KEY = 'moneytrack_budgets';
+export const TRIPS_KEY = 'moneytrack_trips';

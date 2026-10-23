@@ -27,6 +27,8 @@ export const convertToCsv = (data: Expense[]): string => {
     e.dateStr,
     e.timeStr,
     e.syncStatus,
+    e.type || 'debit',
+    e.tripId || '',
   ].join(',')).join('\n');
 
   return headers + rows;
@@ -46,6 +48,9 @@ export const parseCsv = (csv: string): Expense[] => {
   const headers = lines[0].split(',').map(h => h.trim());
   // Allow old CSV format without amountINR/amountUSD
   const hasBaseAmounts = headers.includes('amountINR') && headers.includes('amountUSD');
+  // Columns added later; older backups simply don't have them
+  const typeIndex = headers.indexOf('type');
+  const tripIdIndex = headers.indexOf('tripId');
 
   const data: Expense[] = [];
   for (let i = 1; i < lines.length; i++) {
@@ -83,6 +88,8 @@ export const parseCsv = (csv: string): Expense[] => {
         dateStr: row[dateStrIndex],
         timeStr: row[timeStrIndex],
         syncStatus: row[syncStatusIndex] === 'synced' ? 'synced' : 'pending',
+        ...(typeIndex >= 0 && row[typeIndex]?.trim() === 'credit' ? { type: 'credit' as const } : {}),
+        ...(tripIdIndex >= 0 && row[tripIdIndex]?.trim() ? { tripId: row[tripIdIndex].trim() } : {}),
       });
     }
   }

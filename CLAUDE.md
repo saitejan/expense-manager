@@ -35,7 +35,7 @@ npm run dev                   # http://localhost:5173
 ```
 App.tsx (orchestrator, all state lives here)
 ├── Views: AuthView | AddExpenseView | ListView | StatsView | SettingsView
-├── Hooks: useExpenses, useSettings, useGmailSync, useExchangeRate, useOnlineStatus
+├── Hooks: useExpenses, useSettings, useGmailSync, useExchangeRate, useOnlineStatus, useRecurring, useSmsInbox
 ├── Services: firebase/, gmail/, exchangeRate/, csv/, localStorage/
 └── Components: common/, charts/, gmail/, layout/
 ```
@@ -47,6 +47,10 @@ App.tsx (orchestrator, all state lives here)
 - **Dual-mode storage.** Firebase cloud sync when authenticated; localStorage fallback when not. The `syncStatus` field on `Expense` tracks `'synced' | 'pending'`.
 - **Offline-first.** Pending expenses queue locally and sync when back online.
 - **Multi-currency.** Every expense stores `amount` (native), `amountINR`, and `amountUSD`. Exchange rates fetched from ExchangeRate-API with 1h (creation) / 24h (stats) caching.
+- **Income lives with expenses.** `type: 'credit'` marks income. `useExpenses` exposes `spendExpenses` (debits only); every total, chart and budget must use it.
+- **One serializer.** `toFirebaseExpense` / `fromFirebaseExpense` in `services/firebase/database.ts` are the only place an expense's RTDB shape is defined. Optional fields are omitted, never `undefined` (RTDB rejects undefined).
+- **Serverless iPhone features.** Recurring expenses are created when the app opens (iOS gives web apps no background time). SMS import: an iOS Shortcuts automation POSTs to `smsInbox/{token}.json` with no auth; the token is a write-only capability enforced by rules. Receipts are compressed JPEG data URLs in RTDB (Firebase Storage needs the Blaze plan).
+- **Dark mode** is a palette-variable remap in `index.css` under `:root[data-theme='dark']`, set before first paint by the inline script in `index.html`. No `dark:` variants.
 
 ## Project Structure
 
@@ -70,11 +74,15 @@ src/
 │   ├── useGmailSync.ts         # Gmail OAuth + transaction parsing
 │   ├── useExchangeRate.ts      # Rate fetching + caching
 │   ├── useOnlineStatus.ts      # Navigator.onLine listener
-│   └── usePWAInstall.ts        # beforeinstallprompt handler
+│   ├── usePWAInstall.ts        # beforeinstallprompt handler
+│   ├── useRecurring.ts         # Recurring rules + create due expenses on app open
+│   └── useSmsInbox.ts          # iOS Shortcuts SMS inbox → review queue
 ├── services/
 │   ├── firebase/
 │   │   ├── auth.ts             # signInWithGoogle, handleSignOut, setupAuthStateListener
-│   │   ├── database.ts         # CRUD: add/update/delete/subscribe/sync expenses
+│   │   ├── database.ts         # CRUD: add/update/delete/subscribe/sync expenses, receipts
+│   │   ├── recurring.ts        # Recurring rules + atomic materialization
+│   │   ├── smsInbox.ts         # SMS inbox token + messages
 │   │   └── initialization.ts   # Firebase app init guard
 │   ├── gmail/
 │   │   ├── gmailService.ts     # Gmail API fetch + parse pipeline
@@ -103,12 +111,18 @@ src/
 │   ├── gmail/
 │   │   ├── GmailSyncSection.tsx
 │   │   ├── GmailPermissionDialog.tsx
-│   │   └── TransactionReviewModal.tsx
+│   │   └── TransactionReviewModal.tsx  # Shared by Gmail and SMS review (editable rows)
+│   ├── settings/               # BudgetSettings, RecurringSettings, SmsInboxSettings, TripSettings
 │   └── PWAInstallPrompt.tsx
 ├── utils/
 │   ├── formatting.ts           # Date/number formatting helpers
 │   ├── currencyUtils.ts        # Currency symbol/conversion helpers
-│   └── modal.ts                # Alert/confirm wrappers
+│   ├── modal.ts                # Alert/confirm wrappers
+│   ├── quickAdd.ts             # "450 swiggy" parsing, tag from history, favorites
+│   ├── recurring.ts            # Due-month math for recurring rules
+│   ├── transactions.ts         # Push-id time, duplicate detection for imports
+│   ├── trips.ts                # Trip covering a date
+│   └── image.ts                # Receipt photo compression
 └── config/
     └── firebase.ts             # Firebase config from env vars
 ```
@@ -131,10 +145,24 @@ src/
 | `dateStr` | string | `YYYY-MM-DD` |
 | `timeStr` | string | `HH:MM` |
 | `syncStatus` | `'synced' \| 'pending'` | Local-only field |
+| `type` | `'credit'` (optional) | Income. Absent = expense |
+| `tripId` | string (optional) | Key in `preferences.trips` |
+| `hasReceipt` | boolean (optional) | Photo at `users/{uid}/receipts/{id}` |
+
+Ids: push keys, or deterministic `gmail-{emailId}`, `sms-{msgId}`, `rec-{ruleId}-{YYYY-MM}`.
+
+### Other paths
+
+| Path | Contents |
+|------|----------|
+| `users/{uid}/recurring/{id}` | Monthly rule; `lastGenerated` guards against re-creating deleted entries |
+| `users/{uid}/receipts/{expenseId}` | `{ data: 'data:image/jpeg;base64,...', createdAt }`, loaded on demand |
+| `smsInboxTokens/{token}` | Owner uid (no read rule) |
+| `smsInbox/{token}/{pushId}` | `{ text }`, anyone may create if the token is registered; only the owner reads/deletes |
 
 ### UserPreferences (Firebase path: `users/{uid}/preferences`)
 
-Currency, exportUrl, statsCurrency, gmailSync settings.
+Currency, exportUrl, statsCurrency, gmailSync settings, `budgets` (`{ currency, total?, tags?: [{tag, amount}] }`), `trips`, `smsInboxToken`. Theme is per device (localStorage only).
 
 ## External Integrations
 
@@ -154,7 +182,7 @@ Currency, exportUrl, statsCurrency, gmailSync settings.
 - **Constants:** All magic strings, keys, and config values live in `constants/`. Never hardcode in components.
 - **Services:** Side-effect code (Firebase, API calls, localStorage) isolated in `services/`. Hooks call services; components never call services directly.
 - **Types:** All shared interfaces in `types/index.ts`. Gmail-specific types in `types/gmail.ts`.
-- **No test framework** is currently set up.
+- **No test framework.** Pure helpers have assertions in `scripts/selfcheck.ts`: `node --experimental-strip-types scripts/selfcheck.ts`.
 
 ## Common Tasks
 
@@ -185,3 +213,5 @@ Currency, exportUrl, statsCurrency, gmailSync settings.
 - **CI/CD:** GitHub Actions (see `.github/`)
 - **Manual:** `npm run deploy` pushes built `/dist` to `gh-pages` branch
 - **Base path:** Set in `vite.config.ts` as `/expense-manager/`
+- **Firebase rules first:** publish `firebase-rules.json` in the Firebase console before deploying app changes that write new fields or paths (`$other: false` rejects unknown fields). Rule changes are additive, so the old app keeps working.
+- **Service worker:** bump `CACHE_NAME` in `public/service-worker.js` when changing it. Paths are relative to its `/expense-manager/` scope; navigations are network-first.

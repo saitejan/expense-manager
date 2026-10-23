@@ -3,11 +3,70 @@
  * Handles synchronization between local and cloud storage
  */
 
-import { getDatabase, ref, push, onValue, remove, set, off, update, type Database } from 'firebase/database';
+import { getDatabase, ref, push, onValue, get, set, off, update, type Database } from 'firebase/database';
 import type { FirebaseApp } from 'firebase/app';
 import type { Expense, UserPreferences } from '../../types';
-import { USER_EXPENSES_PATH, USER_PREFERENCES_PATH } from '../../constants';
+import { USER_EXPENSES_PATH, USER_PREFERENCES_PATH, USER_PATH, USER_RECEIPTS_PATH } from '../../constants';
 import { timestampToDate } from '../../utils';
+
+export type ExpenseInput = Omit<Expense, 'id' | 'syncStatus'>;
+
+/** Shape of an expense as stored in RTDB */
+interface StoredExpense {
+  userId: string;
+  amount: number;
+  currency: string;
+  description: string;
+  tag: string;
+  timestamp: number;
+  dateStr: string;
+  timeStr: string;
+  amountINR: number;
+  amountUSD: number;
+  type?: 'credit';
+  tripId?: string;
+  hasReceipt?: true;
+}
+
+/**
+ * Single place that decides how an expense is written to RTDB.
+ * Optional fields are omitted rather than undefined, because set()/update() reject undefined.
+ */
+export const toFirebaseExpense = (userId: string, expense: ExpenseInput): StoredExpense => ({
+  userId,
+  amount: expense.amount,
+  currency: expense.currency || 'INR',
+  description: expense.description,
+  tag: expense.tag,
+  timestamp: expense.timestamp.getTime(),
+  dateStr: expense.dateStr,
+  timeStr: expense.timeStr,
+  amountINR: expense.amountINR || 0,
+  amountUSD: expense.amountUSD || 0,
+  ...(expense.type === 'credit' ? { type: 'credit' as const } : {}),
+  ...(expense.tripId ? { tripId: expense.tripId } : {}),
+  ...(expense.hasReceipt ? { hasReceipt: true as const } : {}),
+});
+
+const fromFirebaseExpense = (id: string, data: StoredExpense): Expense => ({
+  id,
+  userId: data.userId,
+  amount: data.amount,
+  currency: data.currency,
+  amountINR: data.amountINR || 0,
+  amountUSD: data.amountUSD || 0,
+  description: data.description,
+  tag: data.tag,
+  timestamp: timestampToDate(data.timestamp),
+  dateStr: data.dateStr,
+  timeStr: data.timeStr,
+  syncStatus: 'synced',
+  ...(data.type === 'credit' ? { type: 'credit' as const } : {}),
+  ...(data.tripId ? { tripId: data.tripId } : {}),
+  ...(data.hasReceipt ? { hasReceipt: true } : {}),
+});
+
+const receiptRecord = (data: string) => ({ data, createdAt: Date.now() });
 
 /**
  * Gets Firebase Realtime Database instance
@@ -19,31 +78,27 @@ export const getFirebaseDatabase = (app: FirebaseApp): Database => {
 };
 
 /**
- * Adds a new expense to Firebase
+ * Adds a new expense to Firebase, optionally with a receipt photo, in one atomic write
  * @param db - Firebase Database instance
  * @param userId - User ID
  * @param expense - Expense object (without id and syncStatus)
+ * @param customId - Fixed id (Gmail/SMS/recurring imports); a push key otherwise
+ * @param receipt - Compressed JPEG data URL
+ * @returns The expense id
  */
 export const addExpenseToFirebase = async (
   db: Database,
   userId: string,
-  expense: Omit<Expense, 'id' | 'syncStatus'>,
-  customId?: string
-): Promise<void> => {
-  const userExpensesRef = ref(db, USER_EXPENSES_PATH(userId));
-  const newExpenseRef = customId ? ref(db, `${USER_EXPENSES_PATH(userId)}/${customId}`) : push(userExpensesRef);
-  await set(newExpenseRef, {
-    userId,
-    amount: expense.amount,
-    currency: expense.currency || 'INR',
-    description: expense.description,
-    tag: expense.tag,
-    timestamp: expense.timestamp.getTime(),
-    dateStr: expense.dateStr,
-    timeStr: expense.timeStr,
-    amountINR: expense.amountINR || 0,
-    amountUSD: expense.amountUSD || 0,
+  expense: ExpenseInput,
+  customId?: string,
+  receipt?: string
+): Promise<string> => {
+  const id = customId || push(ref(db, USER_EXPENSES_PATH(userId))).key!;
+  await update(ref(db, USER_PATH(userId)), {
+    [`expenses/${id}`]: toFirebaseExpense(userId, { ...expense, hasReceipt: expense.hasReceipt || !!receipt }),
+    ...(receipt ? { [`receipts/${id}`]: receiptRecord(receipt) } : {}),
   });
+  return id;
 };
 
 /**
@@ -52,22 +107,24 @@ export const addExpenseToFirebase = async (
  * @param userId - User ID
  * @param expenseId - Expense ID to update
  * @param expense - Updated expense data
+ * @param receipt - undefined keeps the current receipt, null removes it, a data URL replaces it
  */
 export const updateExpenseInFirebase = async (
   db: Database,
   userId: string,
   expenseId: string,
-  expense: Omit<Expense, 'id' | 'syncStatus'>
+  expense: ExpenseInput,
+  receipt?: string | null
 ): Promise<void> => {
-  const expenseRef = ref(db, `${USER_EXPENSES_PATH(userId)}/${expenseId}`);
-  await set(expenseRef, {
-    ...expense,
-    timestamp: expense.timestamp.getTime(),
+  const hasReceipt = receipt === undefined ? expense.hasReceipt : receipt !== null;
+  await update(ref(db, USER_PATH(userId)), {
+    [`expenses/${expenseId}`]: toFirebaseExpense(userId, { ...expense, hasReceipt }),
+    ...(receipt !== undefined ? { [`receipts/${expenseId}`]: receipt && receiptRecord(receipt) } : {}),
   });
 };
 
 /**
- * Deletes an expense from Firebase
+ * Deletes an expense and its receipt (if any) from Firebase
  * @param db - Firebase Database instance
  * @param userId - User ID
  * @param expenseId - Expense ID to delete
@@ -77,8 +134,19 @@ export const deleteExpenseFromFirebase = async (
   userId: string,
   expenseId: string
 ): Promise<void> => {
-  const expenseRef = ref(db, `${USER_EXPENSES_PATH(userId)}/${expenseId}`);
-  await remove(expenseRef);
+  await update(ref(db, USER_PATH(userId)), {
+    [`expenses/${expenseId}`]: null,
+    [`receipts/${expenseId}`]: null,
+  });
+};
+
+/**
+ * Loads one receipt photo on demand
+ * @returns JPEG data URL, or null if missing
+ */
+export const getReceipt = async (db: Database, userId: string, expenseId: string): Promise<string | null> => {
+  const snapshot = await get(ref(db, `${USER_RECEIPTS_PATH(userId)}/${expenseId}`));
+  return snapshot.val()?.data ?? null;
 };
 
 /**
@@ -99,20 +167,7 @@ export const syncPendingExpensesToFirebase = async (
 ): Promise<void> => {
   const userExpensesRef = ref(db, USER_EXPENSES_PATH(userId));
   const syncPromises = pendingExpenses.map(pendingExpense => {
-    const { id, syncStatus, ...firebaseExpense } = pendingExpense;
-    const newExpenseRef = push(userExpensesRef);
-    return set(newExpenseRef, {
-      userId,
-      amount: firebaseExpense.amount,
-      currency: firebaseExpense.currency || 'INR',
-      description: firebaseExpense.description,
-      tag: firebaseExpense.tag,
-      timestamp: pendingExpense.timestamp.getTime(),
-      dateStr: firebaseExpense.dateStr,
-      timeStr: firebaseExpense.timeStr,
-      amountINR: firebaseExpense.amountINR || 0,
-      amountUSD: firebaseExpense.amountUSD || 0,
-    });
+    return set(push(userExpensesRef), toFirebaseExpense(userId, pendingExpense));
   });
 
   try {
@@ -144,16 +199,8 @@ export const syncRestoredCsvToFirebase = async (
   const userExpensesRef = ref(db, USER_EXPENSES_PATH(userId));
 
   const syncPromises = restoredExpenses.map(restoredExpense => {
-    const expenseToSave = {
-      userId: userId,
-      amount: restoredExpense.amount,
-      currency: restoredExpense.currency,
-      description: restoredExpense.description,
-      tag: restoredExpense.tag,
-      timestamp: restoredExpense.timestamp.getTime(),
-      dateStr: restoredExpense.dateStr,
-      timeStr: restoredExpense.timeStr,
-    };
+    // Receipt photos are not part of CSV backups
+    const expenseToSave = toFirebaseExpense(userId, { ...restoredExpense, hasReceipt: false });
 
     if (restoredExpense.id && !restoredExpense.id.startsWith('local-') && existingExpenseIds.has(restoredExpense.id)) {
       // Update existing record
@@ -193,28 +240,8 @@ export const subscribeToExpenses = (
   onValue(
     userExpensesRef,
     (snapshot) => {
-      const data = snapshot.val();
-      const fetchedExpenses: Expense[] = [];
-
-      if (data) {
-        Object.keys(data).forEach((key) => {
-          const expenseData = data[key];
-          fetchedExpenses.push({
-            id: key,
-            userId: expenseData.userId,
-            amount: expenseData.amount,
-            currency: expenseData.currency,
-            amountINR: expenseData.amountINR || 0,
-            amountUSD: expenseData.amountUSD || 0,
-            description: expenseData.description,
-            tag: expenseData.tag,
-            timestamp: timestampToDate(expenseData.timestamp),
-            dateStr: expenseData.dateStr,
-            timeStr: expenseData.timeStr,
-            syncStatus: 'synced' as const,
-          });
-        });
-      }
+      const data: Record<string, StoredExpense> | null = snapshot.val();
+      const fetchedExpenses = Object.entries(data || {}).map(([key, expenseData]) => fromFirebaseExpense(key, expenseData));
 
       fetchedExpenses.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
       onData(fetchedExpenses);
@@ -237,8 +264,7 @@ export const deleteAllExpensesFromFirebase = async (
   db: Database,
   userId: string
 ): Promise<void> => {
-  const userExpensesRef = ref(db, USER_EXPENSES_PATH(userId));
-  await remove(userExpensesRef);
+  await update(ref(db, USER_PATH(userId)), { expenses: null, receipts: null });
 };
 
 /**
@@ -278,7 +304,7 @@ export const getUserPreferences = async (
 export const updateUserPreferences = async (
   db: Database,
   userId: string,
-  preferences: Partial<UserPreferences>
+  preferences: { [K in keyof UserPreferences]?: UserPreferences[K] | null }
 ): Promise<void> => {
   const preferencesRef = ref(db, USER_PREFERENCES_PATH(userId));
   await update(preferencesRef, preferences);

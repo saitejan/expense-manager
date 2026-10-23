@@ -33,16 +33,26 @@ const determineTransactionType = (subject: string, body: string): 'debit' | 'cre
 };
 
 /**
+ * Bank SMS formats the per-bank patterns miss, tried when the pattern finds no merchant
+ */
+const FALLBACK_MERCHANT_PATTERNS = [
+    /\b(?:to|at)\s+(?:VPA\s+)?([A-Za-z0-9._-]+)@[A-Za-z]+/i, // UPI id: "to VPA zomato@ybl", "to swiggy@icici"
+    /UPI\/P2[AM]\/\d+\/([^/\s]+)/i, // Axis: "UPI/P2M/123456/SWIGGY"
+    /;\s*([A-Za-z0-9 .&'-]+?)\s+credited/i, // ICICI: "on 23-Oct-26; SWIGGY credited"
+];
+
+/** "VPA zomato@ybl" → "zomato" */
+const cleanMerchant = (merchant: string): string =>
+    merchant.replace(/^VPA\s+/i, '').replace(/@[A-Za-z]+$/, '').replace(/[\s.,;:-]+$/, '').trim();
+
+/**
  * Extract merchant name from email body
  */
 const extractMerchant = (body: string, pattern: RegExp | undefined): string | undefined => {
-    if (!pattern) return undefined;
-
-    const match = body.match(pattern);
-    if (match && match[1]) {
-        return match[1].trim();
+    for (const regex of [pattern, ...FALLBACK_MERCHANT_PATTERNS]) {
+        const merchant = regex && body.match(regex)?.[1];
+        if (merchant && cleanMerchant(merchant)) return cleanMerchant(merchant);
     }
-
     return undefined;
 };
 
@@ -64,8 +74,9 @@ export const parseTransactionEmail = (email: {
         const pattern = findMatchingPattern(subject, body);
         if (!pattern) return null;
 
-        // Extract amount
-        const amountMatch = body.match(pattern.bodyPatterns.amount);
+        // Extract amount (SBI-style SMS omit the currency: "debited by 450.0")
+        const amountMatch = body.match(pattern.bodyPatterns.amount)
+            || body.match(/\b(?:debited|credited)\s+(?:by|for|with)\s+([0-9,]+(?:\.[0-9]+)?)/i);
         if (!amountMatch || !amountMatch[1]) return null;
 
         const amount = parseAmount(amountMatch[1]);

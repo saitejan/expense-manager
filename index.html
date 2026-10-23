@@ -3,8 +3,30 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/expense-manager/expenses.png" />
+    <link rel="manifest" href="/expense-manager/manifest.json" />
+    <link rel="apple-touch-icon" href="/expense-manager/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <title>expense-manager</title>
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Money Track" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="theme-color" content="#ffffff" />
+    <title>Money Track</title>
+    <script>
+      // Apply theme before first paint. Key must match THEME_KEY in src/constants/storage.ts.
+      (function () {
+        var media = window.matchMedia('(prefers-color-scheme: dark)');
+        window.applyTheme = function () {
+          var pref = 'system';
+          try { pref = localStorage.getItem('moneytrack_theme') || 'system'; } catch (e) {}
+          var dark = pref === 'dark' || (pref === 'system' && media.matches);
+          document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', dark ? '#101828' : '#ffffff');
+        };
+        window.applyTheme();
+        media.addEventListener('change', window.applyTheme);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

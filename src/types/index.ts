@@ -16,7 +16,14 @@ export interface Expense {
   timeStr: string;
   syncStatus: 'synced' | 'pending';
   metadata?: Record<string, any>;
+  /** 'credit' marks income. Absent means a normal expense. */
+  type?: TransactionType;
+  tripId?: string;
+  /** Photo stored separately at users/{uid}/receipts/{id}, loaded on demand */
+  hasReceipt?: boolean;
 }
+
+export type TransactionType = 'debit' | 'credit';
 
 export interface FormState {
   amount: string;
@@ -25,6 +32,9 @@ export interface FormState {
   date: string;
   time: string;
   currency: string;
+  type: TransactionType;
+  /** '' when the expense is not part of a trip */
+  tripId: string;
 }
 
 export interface AnnualTotal {
@@ -45,6 +55,44 @@ export interface UserPreferences {
     transactionTypeFilter: 'debit' | 'credit' | 'both';
     ignoredEmailIds: string[];
   };
+  budgets?: Budgets;
+  trips?: Record<string, Trip>;
+  /** Secret capability token for the iOS Shortcuts SMS inbox */
+  smsInboxToken?: string;
+}
+
+/** Monthly budgets. Amounts are in `currency`. */
+export interface Budgets {
+  currency: string;
+  total?: number;
+  /** Array, not a map: custom tags may contain characters Firebase forbids in keys */
+  tags?: { tag: string; amount: number }[];
+}
+
+export interface Trip {
+  name: string;
+  /** YYYY-MM-DD, inclusive */
+  startDate: string;
+  endDate: string;
+  currency: string;
+  budget?: number;
+}
+
+/** Monthly recurring expense rule at users/{uid}/recurring/{id} */
+export interface RecurringRule {
+  id: string;
+  description: string;
+  amount: number;
+  currency: string;
+  tag: string;
+  /** 1-31, clamped to the month length */
+  dayOfMonth: number;
+  /** YYYY-MM, first month to generate */
+  startMonth: string;
+  /** YYYY-MM, last month already generated */
+  lastGenerated?: string;
+  active: boolean;
+  createdAt: number;
 }
 
 export interface ExchangeRates {

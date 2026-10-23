@@ -4,7 +4,12 @@
 
 import React from 'react';
 import { Settings as SettingsIcon, User, LogOut, Cloud, Download, Upload, AlertTriangle, Trash2 } from 'lucide-react';
-import type { Expense, ViewType } from '../../types';
+import type { Budgets, Expense, RecurringRule, Trip, ViewType } from '../../types';
+import type { ThemePreference } from '../../hooks/useSettings';
+import { BudgetSettings } from '../../components/settings/BudgetSettings';
+import { RecurringSettings } from '../../components/settings/RecurringSettings';
+import { SmsInboxSettings } from '../../components/settings/SmsInboxSettings';
+import { TripSettings } from '../../components/settings/TripSettings';
 import { showModal } from '../../utils';
 import { saveAllExpensesToLocalStorage } from '../../services/localStorage';
 import { DonationSection } from '../../components/common/DonationSection';
@@ -35,6 +40,25 @@ interface SettingsViewProps {
   setView: React.Dispatch<React.SetStateAction<ViewType>>;
   handleDeleteAllData: () => void;
   exportToGoogleSheets: () => Promise<void>;
+  theme: ThemePreference;
+  updateTheme: (theme: ThemePreference) => void;
+  budgets: Budgets | null;
+  updateBudgets: (budgets: Budgets | null) => void;
+  trips: Record<string, Trip>;
+  updateTrips: (trips: Record<string, Trip>) => void;
+  allAvailableTags: string[];
+  recurringProps: {
+    rules: RecurringRule[];
+    onAdd: (rule: Omit<RecurringRule, 'id'>) => Promise<void>;
+    onToggle: (ruleId: string, active: boolean) => Promise<void>;
+    onDelete: (ruleId: string) => Promise<void>;
+  };
+  smsInboxProps: {
+    inboxUrl: string | null;
+    pendingCount: number;
+    onEnable: () => Promise<void>;
+    onDisable: () => Promise<void>;
+  };
   // Gmail sync props
   gmailSyncProps?: {
     isAuthenticated: boolean;
@@ -86,6 +110,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   handleDeleteAllData,
   exportToGoogleSheets,
   gmailSyncProps,
+  theme,
+  updateTheme,
+  budgets,
+  updateBudgets,
+  trips,
+  updateTrips,
+  allAvailableTags,
+  recurringProps,
+  smsInboxProps,
 }) => {
   return (
     <div className="p-4 bg-white rounded-xl shadow-lg">
@@ -145,7 +178,28 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               Sets the default currency for new expenses. You can select a different currency for each expense.
             </p>
           </div>
+          <div className="mt-4">
+            <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="theme">Theme</label>
+            <select
+              id="theme"
+              value={theme}
+              onChange={(e) => updateTheme(e.target.value as ThemePreference)}
+              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 transition duration-150"
+            >
+              <option value="system">Match iPhone (System)</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </div>
         </div>
+
+        <BudgetSettings key={JSON.stringify(budgets)} budgets={budgets} currency={currency} tags={allAvailableTags} onSave={updateBudgets} />
+
+        <RecurringSettings isAuthenticated={isAuthenticated} currency={currency} tags={allAvailableTags} {...recurringProps} />
+
+        <SmsInboxSettings isAuthenticated={isAuthenticated} isOnline={isOnline} {...smsInboxProps} />
+
+        <TripSettings trips={trips} currency={currency} onSave={updateTrips} />
 
         {/* Gmail Auto-Tracking Section */}
         {gmailSyncProps && (

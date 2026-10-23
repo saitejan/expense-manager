@@ -96,9 +96,11 @@ function exportExpenses(expenses) {
                 expense.timeStr || '',
                 expense.syncStatus || 'synced',
                 new Date(), // Last updated timestamp
-                expense.timestamp.slice(0,7),
-                expense.timestamp.slice(0,4)
-
+                // From local date, not the UTC timestamp: 00:30 IST on the 1st is still the previous month in UTC
+                (expense.dateStr || expense.timestamp).slice(0, 7),
+                (expense.dateStr || expense.timestamp).slice(0, 4),
+                expense.type || 'Expense', // 'Income' rows are not spending: exclude them from spend SUMs
+                expense.trip || ''
             ];
 
             // Check if this expense already exists
@@ -188,11 +190,13 @@ function ensureHeaders(sheet) {
         'syncStatus',
         'Last Updated',
         'Month',
-        'Year'
+        'Year',
+        'Type',
+        'Trip'
     ];
-    // Check if headers exist
-    if (sheet.getLastRow() === 0) {
-        // Sheet is empty, add headers
+    // Write headers on an empty sheet, and also when an older sheet lacks the newer columns
+    const current = sheet.getLastRow() === 0 ? [] : sheet.getRange(1, 1, 1, headers.length).getValues()[0];
+    if (current.join('|') !== headers.join('|')) {
         sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
 
         // Format headers
@@ -226,8 +230,10 @@ function updateExistingRow(sheet, existingData, id, newRow) {
  * @param {Sheet} sheet - The target sheet
  */
 function formatSheet(sheet) {
+    const columnCount = sheet.getLastColumn();
+
     // Auto-resize columns
-    for (let i = 1; i <= 12; i++) {
+    for (let i = 1; i <= columnCount; i++) {
         sheet.autoResizeColumn(i);
     }
 
@@ -237,9 +243,11 @@ function formatSheet(sheet) {
     // Add alternating row colors for data rows
     const lastRow = sheet.getLastRow();
     if (lastRow > 1) {
-        const dataRange = sheet.getRange(2, 1, lastRow - 1, 12);
+        const dataRange = sheet.getRange(2, 1, lastRow - 1, columnCount);
 
-        // Apply banding (alternating colors)
+        // Apply banding (alternating colors). Existing banding must go first: applying it twice throws,
+        // which used to abort formatting on every export after the first.
+        sheet.getBandings().forEach(banding => banding.remove());
         dataRange.applyRowBanding(SpreadsheetApp.BandingTheme.LIGHT_GREY, false, false);
     }
 
@@ -263,7 +271,8 @@ function formatSheet(sheet) {
         const timestampRange = sheet.getRange(2, 9, lastRow - 1, 1);
         timestampRange.setNumberFormat('yyyy-mm-dd hh:mm:ss');
 
-        const lastUpdatedRange = sheet.getRange(2, 10, lastRow - 1, 1);
+        // Column 13 is "Last Updated" (column 10 is dateStr)
+        const lastUpdatedRange = sheet.getRange(2, 13, lastRow - 1, 1);
         lastUpdatedRange.setNumberFormat('yyyy-mm-dd hh:mm:ss');
     }
 }
@@ -288,7 +297,9 @@ function testExport() {
                 timestamp: new Date().toISOString(),
                 dateStr: '2025-12-27',
                 timeStr: '10:30',
-                syncStatus: 'synced'
+                syncStatus: 'synced',
+                type: 'Expense',
+                trip: 'Goa Dec'
             },
             {
                 id: 'test-2',
@@ -302,7 +313,9 @@ function testExport() {
                 timestamp: new Date().toISOString(),
                 dateStr: '2025-12-27',
                 timeStr: '14:45',
-                syncStatus: 'synced'
+                syncStatus: 'synced',
+                type: 'Income',
+                trip: ''
             }
         ]
     };

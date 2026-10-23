@@ -7,13 +7,14 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { PlusCircle, DollarSign, Calendar, Settings, Cloud } from 'lucide-react';
 
 // Types
-import type { Expense, ViewType } from './types';
+import type { Expense, FormState, ViewType } from './types';
+import type { ParsedTransaction } from './types/gmail';
 
 // Constants
 import { LOCAL_STORAGE_KEY } from './constants';
 
 // Hooks
-import { useSettings, useOnlineStatus, useExpenses, useExchangeRate, useGmailSync } from './hooks';
+import { useSettings, useOnlineStatus, useExpenses, useExchangeRate, useGmailSync, useRecurring, useSmsInbox } from './hooks';
 
 // Services
 import {
@@ -36,9 +37,12 @@ import {
 } from './services/firebase';
 import { loadExpensesFromLocalStorage, saveAllExpensesToLocalStorage } from './services/localStorage';
 import { convertToCsv, parseCsv } from './services/csv';
+import { getExchangeRates, convertToBaseAmounts } from './services/exchangeRate';
 
 // Utils
 import { showModal } from './utils';
+import { markPossibleDuplicates } from './utils/transactions';
+import { findTripIdForDate } from './utils/trips';
 
 // Views
 import { AuthView } from './views/AuthView';
@@ -52,6 +56,7 @@ import { PWAInstallPrompt } from './components/PWAInstallPrompt';
 import { DonationPrompt } from './components/common/DonationPrompt';
 import { LoadingSpinner } from './components/common/LoadingSpinner';
 import { TransactionReviewModal } from './components/gmail/TransactionReviewModal';
+import { ReceiptViewer } from './components/common/ReceiptViewer';
 
 const App = () => {
   const isOnline = useOnlineStatus();
@@ -73,10 +78,17 @@ const App = () => {
     exportUrl,
     currency,
     statsCurrency,
+    budgets,
+    trips,
+    smsInboxToken,
+    theme,
     updateExportUrl,
     updateCurrency,
     updateStatsCurrency,
-    updateGmailSyncSettings
+    updateGmailSyncSettings,
+    updateBudgets,
+    updateTrips,
+    updateTheme,
   } = useSettings({
     user,
     db,
@@ -92,6 +104,8 @@ const App = () => {
   const {
     form,
     editingExpenseId,
+    receiptDraft,
+    receiptViewUrl,
     filterYear,
     setFilterYear,
     filterMonth,
@@ -110,17 +124,28 @@ const App = () => {
     visibleCount,
     setVisibleCount,
     allExpenses,
+    spendExpenses,
     allAvailableTags,
     availableMonths,
     availableYears,
     listViewExpenses,
     listViewTotal,
+    listViewIncome,
     filteredExpenses,
     monthlyTotal,
+    monthlyIncome,
+    prevMonthTotal,
     annualTotals,
     filterDateString,
     handleFormChange,
     handleFormClose,
+    prefillForm,
+    applyQuickEntry,
+    applySmsText,
+    handleReceiptFile,
+    removeReceipt,
+    handleViewReceipt,
+    closeReceiptView,
     handleAddExpense,
     handleEditExpense,
     handleDeleteExpense,
@@ -147,9 +172,12 @@ const App = () => {
     deleteExpenseFromFirebase,
     showModal,
     exchangeRates: statsExchangeRates,
+    trips,
   });
 
-  const [isGmailModalOpen, setIsGmailModalOpen] = useState(false);
+  // Which import queue the review modal shows
+  const [reviewSource, setReviewSource] = useState<'gmail' | 'sms' | null>(null);
+  const [smsTransactions, setSmsTransactions] = useState<ParsedTransaction[]>([]);
 
   // Gmail sync hook
   const {
@@ -169,10 +197,48 @@ const App = () => {
     auth,
     user,
     expenses: allExpenses,
-    onTransactionsParsed: () => {
-      setIsGmailModalOpen(true);
+    onTransactionsParsed: (transactions) => {
+      setParsedTransactions(markPossibleDuplicates(transactions, allExpenses));
+      setReviewSource('gmail');
     },
   });
+
+  const { rules: recurringRules, addRule, toggleRule, deleteRule } = useRecurring({ db, user, isOnline, showModal });
+
+  const {
+    messages: smsMessages,
+    inboxUrl: smsInboxUrl,
+    enableInbox,
+    disableInbox,
+    deleteMessages: deleteSmsMessages,
+    buildReviewTransactions: buildSmsReviewTransactions,
+  } = useSmsInbox({ db, user, token: smsInboxToken });
+
+  const openSmsReview = () => {
+    setSmsTransactions(markPossibleDuplicates(buildSmsReviewTransactions(), allExpenses));
+    setReviewSource('sms');
+  };
+
+  // Deep link for Siri / Shortcuts: #add?amount=450&desc=Swiggy&tag=Food&currency=INR
+  // Read once at load, applied after auth settles (the auth listener resets the view to 'list').
+  const deepLinkRef = useRef(window.location.hash);
+  useEffect(() => {
+    if (!authReady) return;
+    const match = deepLinkRef.current.match(/^#add\??(.*)$/);
+    deepLinkRef.current = '';
+    if (!match) return;
+    const params = new URLSearchParams(match[1]);
+    const amount = params.get('amount') || '';
+    const desc = params.get('desc') || '';
+    applyQuickEntry(`${amount} ${desc}`);
+    const extra: Partial<FormState> = {};
+    if (params.get('tag')) extra.tag = params.get('tag')!;
+    if (params.get('currency')) extra.currency = params.get('currency')!.toUpperCase();
+    if (params.get('type') === 'income') extra.type = 'credit';
+    prefillForm(extra);
+    setView('add');
+    window.history.replaceState(null, '', window.location.pathname + window.location.search);
+  }, [authReady, applyQuickEntry, prefillForm]);
 
   // Refs for sync management
   const expensesRef = useRef(expenses);
@@ -421,15 +487,27 @@ const App = () => {
       return;
     }
     const csvContent = convertToCsv(allExpenses);
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
+    const fileName = `moneytrack_backup_${new Date().toISOString().substring(0, 10)}.csv`;
+    const file = new File([csvContent], fileName, { type: 'text/csv' });
+
+    // iOS home-screen apps handle downloads poorly; the share sheet saves to Files/iCloud or sends anywhere.
+    if (navigator.canShare?.({ files: [file] })) {
+      navigator.share({ files: [file], title: 'Money Track backup' })
+        .catch((error: Error) => {
+          if (error.name !== 'AbortError') showModal('Backup Failed', `Could not share the CSV: ${error.message}`);
+        });
+      return;
+    }
+
+    const url = URL.createObjectURL(file);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', `moneytrack_backup_${new Date().toISOString().substring(0, 10)}.csv`);
+    link.setAttribute('download', fileName);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
     showModal('Backup Successful', `${allExpenses.length} expenses downloaded as CSV.`);
   };
 
@@ -460,7 +538,10 @@ const App = () => {
         timestamp: expense.timestamp.toISOString(),
         dateStr: expense.dateStr,
         timeStr: expense.timeStr,
-        syncStatus: expense.syncStatus
+        syncStatus: expense.syncStatus,
+        type: expense.type === 'credit' ? 'Income' : 'Expense',
+        // Name, not id: a deleted trip exports as blank
+        trip: (expense.tripId && trips[expense.tripId]?.name) || '',
       }));
 
       // Send to Google Sheets Web App
@@ -566,41 +647,62 @@ const App = () => {
     );
   };
 
-  const handleImportTransactions = async (selectedTransactions: any[]) => {
+  const handleImportTransactions = async (selectedTransactions: ParsedTransaction[]) => {
+    const source = reviewSource;
+    const reviewed = source === 'sms' ? smsTransactions : parsedTransactions;
     try {
       setLoading(true);
+      const rates = selectedTransactions.length > 0 ? await getExchangeRates('creation') : null;
+      const offlineExpenses: Expense[] = [];
 
       for (const transaction of selectedTransactions) {
-        const expenseId = `gmail-${transaction.emailId}`;
+        const expenseId = `${transaction.source === 'sms' ? 'sms' : 'gmail'}-${transaction.emailId}`;
+        const date = new Date(transaction.timestamp);
+        const dateStr = date.toLocaleDateString('en-CA');
+        const tripId = findTripIdForDate(trips, dateStr);
         const newExpense: Expense = {
           id: expenseId,
           userId: user?.uid || 'local',
           amount: transaction.amount,
-          amountINR: transaction.amount, // Simplified, assume INR for now or use rates
-          amountUSD: transaction.amount / 83, // Rough estimate or use rates
           currency: transaction.currency,
-          description: transaction.description,
+          ...convertToBaseAmounts(transaction.amount, transaction.currency, rates!),
+          description: transaction.description.trim(),
           tag: transaction.suggestedTag,
-          timestamp: new Date(transaction.timestamp),
-          dateStr: new Date(transaction.timestamp).toLocaleDateString('en-CA'),
-          timeStr: new Date(transaction.timestamp).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+          timestamp: date,
+          dateStr,
+          timeStr: date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
           syncStatus: isAuthenticated ? 'synced' : 'pending',
+          ...(transaction.transactionType === 'credit' ? { type: 'credit' as const } : {}),
+          ...(tripId ? { tripId } : {}),
         };
 
         if (isAuthenticated && db && user) {
           await addExpenseToFirebase(db, user.uid, newExpense, expenseId);
         } else {
-          setPendingExpenses(prev => [...prev, newExpense]);
-          saveAllExpensesToLocalStorage(expenses, [...pendingExpenses, newExpense]);
+          offlineExpenses.push(newExpense);
         }
       }
 
-      showModal('Import Successful', `Successfully imported ${selectedTransactions.length} transactions.`);
-      setIsGmailModalOpen(false);
-      setParsedTransactions([]);
-    } catch (error: any) {
+      if (offlineExpenses.length > 0) {
+        setPendingExpenses(prev => {
+          const newPending = [...prev, ...offlineExpenses];
+          saveAllExpensesToLocalStorage(expenses, newPending);
+          return newPending;
+        });
+      }
+
+      // Every reviewed SMS leaves the inbox: imported ones are now expenses, unselected ones were discarded
+      if (source === 'sms') {
+        await deleteSmsMessages(reviewed.map(t => t.emailId));
+        setSmsTransactions([]);
+      } else {
+        setParsedTransactions([]);
+      }
+      setReviewSource(null);
+      showModal('Import Successful', `Imported ${selectedTransactions.length} transaction${selectedTransactions.length !== 1 ? 's' : ''}.`);
+    } catch (error) {
       console.error('Error importing transactions:', error);
-      showModal('Import Failed', `Failed to import transactions: ${error.message}`);
+      showModal('Import Failed', `Failed to import transactions: ${(error as Error).message}`);
     } finally {
       setLoading(false);
     }
@@ -645,7 +747,7 @@ const App = () => {
         )}
 
         {/* Header */}
-        <header className="bg-white shadow-sm p-4 sticky top-0 z-10">
+        <header className="bg-white shadow-sm p-4 pt-[calc(1rem+env(safe-area-inset-top))] sticky top-0 z-10">
           <div className="max-w-4xl mx-auto flex justify-between items-center">
             <h1 className="text-2xl font-bold text-indigo-600">Money Track</h1>
             <div className="flex items-center gap-3">
@@ -672,6 +774,7 @@ const App = () => {
             <ListView
               listViewExpenses={listViewExpenses}
               listViewTotal={listViewTotal}
+              listViewIncome={listViewIncome}
               visibleCount={visibleCount}
               setVisibleCount={setVisibleCount}
               filterMode={filterMode}
@@ -698,6 +801,13 @@ const App = () => {
               pendingExpenses={pendingExpenses}
               isGmailConnected={isGmailConnected}
               onSyncWithGmail={handleSyncWithGmail}
+              budgets={budgets}
+              spendExpenses={spendExpenses}
+              exchangeRates={statsExchangeRates}
+              onOpenSettings={() => setView('settings')}
+              smsCount={smsMessages.length}
+              onReviewSms={openSmsReview}
+              onViewReceipt={handleViewReceipt}
             />
           )}
 
@@ -714,6 +824,16 @@ const App = () => {
               expenses={allExpenses}
               availableTags={allAvailableTags}
               editingExpenseId={editingExpenseId}
+              trips={trips}
+              receiptDraft={receiptDraft}
+              hasSavedReceipt={!!allExpenses.find(e => e.id === editingExpenseId)?.hasReceipt}
+              canAttachReceipt={isOnline && isAuthenticated}
+              onQuickEntry={applyQuickEntry}
+              onSmsText={applySmsText}
+              onPrefill={prefillForm}
+              onReceiptFile={handleReceiptFile}
+              onRemoveReceipt={removeReceipt}
+              onViewReceipt={() => editingExpenseId && handleViewReceipt(editingExpenseId)}
             />
           )}
 
@@ -726,6 +846,8 @@ const App = () => {
               annualTotals={annualTotals}
               filteredExpenses={filteredExpenses}
               monthlyTotal={monthlyTotal}
+              monthlyIncome={monthlyIncome}
+              prevMonthTotal={prevMonthTotal}
               filterDateString={filterDateString}
               availableYears={availableYears}
               handlePrevYear={handlePrevYear}
@@ -736,10 +858,12 @@ const App = () => {
               handleEditExpense={handleEditExpense}
               currency={currency}
               isOnline={isOnline}
-              allExpenses={allExpenses}
+              allExpenses={spendExpenses}
               statsCurrency={statsCurrency}
               updateStatsCurrency={updateStatsCurrency}
               exchangeRates={statsExchangeRates}
+              trips={trips}
+              onViewReceipt={handleViewReceipt}
             />
           )}
 
@@ -768,6 +892,15 @@ const App = () => {
               setView={setView}
               handleDeleteAllData={handleDeleteAllData}
               exportToGoogleSheets={exportToGoogleSheets}
+              theme={theme}
+              updateTheme={updateTheme}
+              budgets={budgets}
+              updateBudgets={updateBudgets}
+              trips={trips}
+              updateTrips={updateTrips}
+              allAvailableTags={allAvailableTags}
+              recurringProps={{ rules: recurringRules, onAdd: addRule, onToggle: toggleRule, onDelete: deleteRule }}
+              smsInboxProps={{ inboxUrl: smsInboxUrl, pendingCount: smsMessages.length, onEnable: enableInbox, onDisable: disableInbox }}
               gmailSyncProps={{
                 isAuthenticated: isGmailAuthenticated,
                 isGmailConnected: isGmailConnected,
@@ -808,7 +941,7 @@ const App = () => {
         </main>
 
         {/* Navigation */}
-        <nav className="bg-white border-t border-gray-200 sticky bottom-0 z-10">
+        <nav className="bg-white border-t border-gray-200 sticky bottom-0 z-10 pb-[env(safe-area-inset-bottom)]">
           <div className="max-w-4xl mx-auto flex justify-around items-center p-3">
             <button
               onClick={() => setView('list')}
@@ -848,16 +981,20 @@ const App = () => {
         </nav>
         {/* Modal for Gmail Review */}
         <TransactionReviewModal
-          isOpen={isGmailModalOpen}
-          transactions={parsedTransactions}
-          onClose={() => setIsGmailModalOpen(false)}
+          isOpen={reviewSource !== null}
+          mode={reviewSource || 'gmail'}
+          transactions={reviewSource === 'sms' ? smsTransactions : parsedTransactions}
+          availableTags={allAvailableTags}
+          onClose={() => setReviewSource(null)}
           onImport={handleImportTransactions}
           onUpdateTransaction={(index, updates) => {
-            const newTransactions = [...parsedTransactions];
-            newTransactions[index] = { ...newTransactions[index], ...updates };
-            setParsedTransactions(newTransactions);
+            // Functional update: "Select all" calls this once per row in the same tick
+            const update = (prev: ParsedTransaction[]) => prev.map((t, i) => (i === index ? { ...t, ...updates } : t));
+            if (reviewSource === 'sms') setSmsTransactions(update);
+            else setParsedTransactions(update);
           }}
         />
+        <ReceiptViewer url={receiptViewUrl} onClose={closeReceiptView} />
       </div>
     );
   };

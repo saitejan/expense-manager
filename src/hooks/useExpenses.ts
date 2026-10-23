@@ -4,9 +4,41 @@
  */
 
 import { useState, useMemo, useCallback } from 'react';
-import type { Expense, FormState, FilterMode, AnnualTotal, ExchangeRates } from '../types';
+import type { Database } from 'firebase/database';
+import type { Expense, FormState, FilterMode, AnnualTotal, ExchangeRates, Trip } from '../types';
 import { TAGS, PAGINATION_SIZE } from '../constants';
 import { timestampToDate } from '../utils';
+import { parseQuickEntry, suggestTagFromHistory } from '../utils/quickAdd';
+import { findTripIdForDate } from '../utils/trips';
+import { compressImage } from '../utils/image';
+import { parseTransactionEmail } from '../services/gmail/emailParser';
+import { suggestTag } from '../services/gmail/tagMapper';
+import { getReceipt } from '../services/firebase/database';
+
+type ExpenseInput = Omit<Expense, 'id' | 'syncStatus'>;
+
+const createEmptyForm = (currency: string, trips: Record<string, Trip>): FormState => {
+  // Local date, not toISOString(): in India the UTC date is still "yesterday" until 05:30
+  const date = new Date().toLocaleDateString('en-CA');
+  return {
+    amount: '',
+    description: '',
+    tag: TAGS[0],
+    date,
+    time: new Date().toTimeString().substring(0, 5),
+    currency,
+    type: 'debit',
+    tripId: findTripIdForDate(trips, date),
+  };
+};
+
+/** Keyword tag guess; undefined instead of the catch-all 'Other' so the current tag is kept */
+const guessTag = (description: string, expenses: Expense[]): string | undefined => {
+  const fromHistory = suggestTagFromHistory(description, expenses);
+  if (fromHistory) return fromHistory;
+  const keywordTag = suggestTag(description);
+  return keywordTag === 'Other' ? undefined : keywordTag;
+};
 
 interface UseExpensesParams {
   expenses: Expense[];
@@ -20,11 +52,12 @@ interface UseExpensesParams {
   setLoading: React.Dispatch<React.SetStateAction<boolean>>;
   setView: React.Dispatch<React.SetStateAction<any>>;
   saveAllExpensesToLocalStorage: (expenses: Expense[], pending: Expense[]) => void;
-  addExpenseToFirebase: (db: any, userId: string, expense: any) => Promise<void>;
-  updateExpenseInFirebase: (db: any, userId: string, id: string, expense: any) => Promise<void>;
-  deleteExpenseFromFirebase: (db: any, userId: string, id: string) => Promise<void>;
+  addExpenseToFirebase: (db: Database, userId: string, expense: ExpenseInput, customId?: string, receipt?: string) => Promise<string>;
+  updateExpenseInFirebase: (db: Database, userId: string, id: string, expense: ExpenseInput, receipt?: string | null) => Promise<void>;
+  deleteExpenseFromFirebase: (db: Database, userId: string, id: string) => Promise<void>;
   showModal: (title: string, message: string, confirm?: boolean, onConfirm?: () => void) => void;
   exchangeRates: ExchangeRates | null;
+  trips: Record<string, Trip>;
 }
 
 export const useExpenses = ({
@@ -44,6 +77,7 @@ export const useExpenses = ({
   deleteExpenseFromFirebase,
   showModal,
   exchangeRates,
+  trips,
 }: UseExpensesParams) => {
   // Filter states
   const [filterYear, setFilterYear] = useState(new Date().getFullYear());
@@ -59,20 +93,31 @@ export const useExpenses = ({
   const [visibleCount, setVisibleCount] = useState(PAGINATION_SIZE);
 
   // Form state
-  const [form, setForm] = useState<FormState>({
-    amount: '',
-    description: '',
-    tag: TAGS[0],
-    date: new Date().toISOString().substring(0, 10),
-    time: new Date().toTimeString().substring(0, 5),
-    currency: currency,
-  });
+  const [form, setForm] = useState<FormState>(() => createEmptyForm(currency, trips));
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
+  // undefined = keep current receipt, null = remove it, string = new compressed photo
+  const [receiptDraft, setReceiptDraft] = useState<string | null | undefined>(undefined);
+  const [receiptViewUrl, setReceiptViewUrl] = useState<string | null>(null);
+
+  // Trips and the preferred currency load from Firebase after the form exists; a new expense should still get them
+  const [tripsSeen, setTripsSeen] = useState(trips);
+  if (tripsSeen !== trips) {
+    setTripsSeen(trips);
+    if (!editingExpenseId) setForm(prev => ({ ...prev, tripId: findTripIdForDate(trips, prev.date) }));
+  }
+  const [currencySeen, setCurrencySeen] = useState(currency);
+  if (currencySeen !== currency) {
+    setCurrencySeen(currency);
+    if (!editingExpenseId) setForm(prev => (prev.amount ? prev : { ...prev, currency }));
+  }
 
   // Computed: All expenses combined
   const allExpenses = useMemo(() => {
     return [...expenses, ...pendingExpenses].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
   }, [expenses, pendingExpenses]);
+
+  // Computed: Spending only. Every total, chart and budget uses this so income never inflates spend.
+  const spendExpenses = useMemo(() => allExpenses.filter(e => e.type !== 'credit'), [allExpenses]);
 
   // Computed: Available tags
   const allAvailableTags = useMemo(() => {
@@ -154,27 +199,38 @@ export const useExpenses = ({
     }
   }, [currency, exchangeRates]);
 
-  // Computed: List view total
-  const listViewTotal = useMemo(() => {
-    return listViewExpenses.reduce((sum, expense) => sum + getAmountInCurrency(expense), 0);
+  // Computed: List view totals (spend and income kept apart)
+  const { listViewTotal, listViewIncome } = useMemo(() => {
+    let spend = 0;
+    let income = 0;
+    for (const expense of listViewExpenses) {
+      if (expense.type === 'credit') income += getAmountInCurrency(expense);
+      else spend += getAmountInCurrency(expense);
+    }
+    return { listViewTotal: spend, listViewIncome: income };
   }, [listViewExpenses, getAmountInCurrency]);
 
-  // Computed: Stats view filtered expenses
-  const { filteredExpenses, monthlyTotal } = useMemo(() => {
-    const filtered = allExpenses.filter(expense => {
-      const expenseDate = expense.timestamp;
-      return expenseDate.getMonth() === filterMonth && expenseDate.getFullYear() === filterYear;
-    });
+  // Computed: Stats view month (list shows income too; totals are split)
+  const { filteredExpenses, monthlyTotal, monthlyIncome, prevMonthTotal } = useMemo(() => {
+    const inMonth = (expense: Expense, year: number, month: number) =>
+      expense.timestamp.getMonth() === month && expense.timestamp.getFullYear() === year;
+    const sum = (list: Expense[]) => list.reduce((total, expense) => total + getAmountInCurrency(expense), 0);
 
-    const total = filtered.reduce((sum, expense) => sum + getAmountInCurrency(expense), 0);
+    const filtered = allExpenses.filter(expense => inMonth(expense, filterYear, filterMonth));
+    const prev = new Date(filterYear, filterMonth - 1, 1);
 
-    return { filteredExpenses: filtered, monthlyTotal: total };
-  }, [allExpenses, filterMonth, filterYear, getAmountInCurrency]);
+    return {
+      filteredExpenses: filtered,
+      monthlyTotal: sum(filtered.filter(e => e.type !== 'credit')),
+      monthlyIncome: sum(filtered.filter(e => e.type === 'credit')),
+      prevMonthTotal: sum(spendExpenses.filter(e => inMonth(e, prev.getFullYear(), prev.getMonth()))),
+    };
+  }, [allExpenses, spendExpenses, filterMonth, filterYear, getAmountInCurrency]);
 
   // Computed: Annual totals
   const annualTotals = useMemo<AnnualTotal[]>(() => {
     const totals: { [key: number]: AnnualTotal } = {};
-    const currentYearExpenses = allExpenses.filter(e => timestampToDate(e.timestamp).getFullYear() === filterYear);
+    const currentYearExpenses = spendExpenses.filter(e => timestampToDate(e.timestamp).getFullYear() === filterYear);
 
     for (let i = 0; i < 12; i++) {
       totals[i] = {
@@ -191,7 +247,7 @@ export const useExpenses = ({
     });
 
     return Object.values(totals);
-  }, [allExpenses, filterYear, getAmountInCurrency]);
+  }, [spendExpenses, filterYear, getAmountInCurrency]);
 
   // Computed: Filter date string
   const filterDateString = useMemo(() => {
@@ -235,27 +291,79 @@ export const useExpenses = ({
   // Handlers: Form
   const handleFormChange = useCallback((e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setForm(prev => ({ ...prev, [name]: value }));
+    setForm(prev => ({
+      ...prev,
+      [name]: value,
+      // New expenses follow the trip covering their date; edits keep what was saved
+      ...(name === 'date' && !editingExpenseId ? { tripId: findTripIdForDate(trips, value) } : {}),
+    }));
+  }, [editingExpenseId, trips]);
+
+  const prefillForm = useCallback((values: Partial<FormState>) => {
+    setForm(prev => ({ ...prev, ...values }));
   }, []);
 
+  /** "450 swiggy" → amount, description and a tag guess */
+  const applyQuickEntry = useCallback((text: string) => {
+    const { amount, description } = parseQuickEntry(text);
+    const tag = guessTag(description, allExpenses);
+    setForm(prev => ({ ...prev, amount, description, ...(tag ? { tag } : {}) }));
+  }, [allExpenses]);
+
+  /**
+   * Fills the form from a bank SMS / alert text using the Gmail parser
+   * @returns false when no amount could be found
+   */
+  const applySmsText = useCallback((text: string): boolean => {
+    const parsed = parseTransactionEmail({ id: 'clipboard', subject: text, body: text, date: Date.now() });
+    if (!parsed) return false;
+    const tag = guessTag(parsed.description, allExpenses) || parsed.suggestedTag;
+    setForm(prev => ({
+      ...prev,
+      amount: String(parsed.amount),
+      description: parsed.description,
+      currency: parsed.currency,
+      type: parsed.transactionType,
+      tag,
+    }));
+    return true;
+  }, [allExpenses]);
+
+  const handleReceiptFile = useCallback(async (file: File) => {
+    try {
+      setReceiptDraft(await compressImage(file));
+    } catch (error) {
+      showModal('Receipt Error', (error as Error).message);
+    }
+  }, [showModal]);
+
+  const removeReceipt = useCallback(() => setReceiptDraft(null), []);
+
+  const handleViewReceipt = useCallback(async (id: string) => {
+    if (!db || !user) return;
+    try {
+      const url = await getReceipt(db, user.uid, id);
+      if (url) setReceiptViewUrl(url);
+      else showModal('Receipt', 'No receipt found for this expense.');
+    } catch (error) {
+      showModal('Receipt Error', `Could not load the receipt: ${(error as Error).message}`);
+    }
+  }, [db, user, showModal]);
+
+  const closeReceiptView = useCallback(() => setReceiptViewUrl(null), []);
+
   const handleFormClose = useCallback(() => {
-    setForm({
-      amount: '',
-      description: '',
-      tag: TAGS[0],
-      date: new Date().toISOString().substring(0, 10),
-      time: new Date().toTimeString().substring(0, 5),
-      currency: currency,
-    });
+    setForm(createEmptyForm(currency, trips));
     setEditingExpenseId(null);
+    setReceiptDraft(undefined);
     setView('list');
-  }, [setView]);
+  }, [currency, trips, setView]);
 
   // Handlers: Add/Edit expense
   const handleAddExpense = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const { amount, description, tag, date, time, currency: formCurrency } = form;
+    const { amount, description, tag, date, time, currency: formCurrency, type, tripId } = form;
     const amountFloat = parseFloat(amount);
     const currentUserId = user?.uid || 'offline-user';
 
@@ -309,11 +417,13 @@ export const useExpenses = ({
           timestamp: dateTime,
           dateStr: date,
           timeStr: time,
+          type: type === 'credit' ? 'credit' : undefined,
+          tripId: tripId || undefined,
         };
 
         if (existingExpense.syncStatus === 'synced' && isOnline && db && user) {
           const { id, syncStatus, ...expenseData } = updatedExpense;
-          await updateExpenseInFirebase(db, user.uid, editingExpenseId, expenseData);
+          await updateExpenseInFirebase(db, user.uid, editingExpenseId, expenseData, receiptDraft);
         } else {
           setPendingExpenses(prev => {
             const newPending = prev.map(e => e.id === editingExpenseId ? updatedExpense : e);
@@ -341,12 +451,14 @@ export const useExpenses = ({
         dateStr: date,
         timeStr: time,
         syncStatus: 'pending',
+        ...(type === 'credit' ? { type: 'credit' as const } : {}),
+        ...(tripId ? { tripId } : {}),
       };
 
       if (isOnline && isAuthenticated && db && user) {
         try {
           const { id, syncStatus, ...expenseData } = newExpense;
-          await addExpenseToFirebase(db, user.uid, expenseData);
+          await addExpenseToFirebase(db, user.uid, expenseData, undefined, receiptDraft || undefined);
           handleFormClose();
         } catch (firebaseError: any) {
           console.error("Firebase error:", firebaseError);
@@ -374,6 +486,9 @@ export const useExpenses = ({
           return newPending;
         });
         handleFormClose();
+        if (receiptDraft) {
+          showModal('Receipt Not Saved', 'Receipts need you to be online and signed in. The expense was saved without it.');
+        }
       }
     } catch (error: any) {
       console.error("Error adding/updating expense:", error);
@@ -384,6 +499,7 @@ export const useExpenses = ({
   }, [
     form,
     editingExpenseId,
+    receiptDraft,
     allExpenses,
     currency,
     isOnline,
@@ -418,8 +534,11 @@ export const useExpenses = ({
       date: expense.dateStr,
       time: expense.timeStr,
       currency: expense.currency,
+      type: expense.type === 'credit' ? 'credit' : 'debit',
+      tripId: expense.tripId || '',
     });
     setEditingExpenseId(id);
+    setReceiptDraft(undefined);
     setView('add');
   }, [allExpenses, isOnline, setView, showModal]);
 
@@ -486,6 +605,8 @@ export const useExpenses = ({
     // State
     form,
     editingExpenseId,
+    receiptDraft,
+    receiptViewUrl,
     filterYear,
     setFilterYear,
     filterMonth,
@@ -506,19 +627,30 @@ export const useExpenses = ({
 
     // Computed values
     allExpenses,
+    spendExpenses,
     allAvailableTags,
     availableMonths,
     availableYears,
     listViewExpenses,
     listViewTotal,
+    listViewIncome,
     filteredExpenses,
     monthlyTotal,
+    monthlyIncome,
+    prevMonthTotal,
     annualTotals,
     filterDateString,
 
     // Handlers
     handleFormChange,
     handleFormClose,
+    prefillForm,
+    applyQuickEntry,
+    applySmsText,
+    handleReceiptFile,
+    removeReceipt,
+    handleViewReceipt,
+    closeReceiptView,
     handleAddExpense,
     handleEditExpense,
     handleDeleteExpense,

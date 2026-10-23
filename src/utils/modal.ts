@@ -27,7 +27,7 @@ export const showModal = (
 
   const modalDiv = document.createElement('div');
   modalDiv.id = 'custom-alert-modal';
-  modalDiv.className = "fixed inset-0 bg-gray-600 bg-opacity-75 flex justify-center items-center z-50 p-4";
+  modalDiv.className = "fixed inset-0 bg-black/50 flex justify-center items-center z-50 p-4";
   modalDiv.innerHTML = `
         <div class="bg-white p-6 rounded-xl shadow-2xl w-full max-w-sm transform transition-all">
             <h3 class="text-xl font-bold mb-3 text-indigo-700">${title}</h3>

@@ -4,8 +4,9 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { Calendar, ArrowLeft, ArrowRight, BarChart3, Grid3x3 } from 'lucide-react';
-import type { Expense, AnnualTotal, ExchangeRates } from '../../types';
+import type { Expense, AnnualTotal, ExchangeRates, Trip } from '../../types';
 import { ExpenseItem } from '../../components/common/ExpenseItem';
+import { TripsCard } from '../../components/common/TripsCard';
 import { formatAmount } from '../../utils';
 import { ExpenseTrendChart } from '../../components/charts/ExpenseTrendChart';
 import { CategoryBreakdown } from '../../components/charts/CategoryBreakdown';
@@ -20,6 +21,8 @@ interface StatsViewProps {
   annualTotals: AnnualTotal[];
   filteredExpenses: Expense[];
   monthlyTotal: number;
+  monthlyIncome: number;
+  prevMonthTotal: number;
   filterDateString: string;
   availableYears: number[];
   handlePrevYear: () => void;
@@ -34,6 +37,8 @@ interface StatsViewProps {
   statsCurrency: string;
   updateStatsCurrency: (currency: string) => void;
   exchangeRates: ExchangeRates | null;
+  trips: Record<string, Trip>;
+  onViewReceipt: (id: string) => void;
 }
 
 /**
@@ -46,6 +51,8 @@ export const StatsView: React.FC<StatsViewProps> = ({
   annualTotals,
   filteredExpenses,
   monthlyTotal,
+  monthlyIncome,
+  prevMonthTotal,
   filterDateString,
   availableYears,
   handlePrevYear,
@@ -60,6 +67,8 @@ export const StatsView: React.FC<StatsViewProps> = ({
   statsCurrency,
   updateStatsCurrency,
   exchangeRates,
+  trips,
+  onViewReceipt,
 }) => {
   const [viewMode, setViewMode] = useState<'grid' | 'chart'>('grid');
   const [timeView, setTimeView] = useState<TimeView>('monthly');
@@ -380,6 +389,7 @@ export const StatsView: React.FC<StatsViewProps> = ({
                     showDate
                     currency={currency}
                     isOnline={isOnline}
+                    onViewReceipt={onViewReceipt}
                   />
                 ))}
               </div>
@@ -489,6 +499,38 @@ export const StatsView: React.FC<StatsViewProps> = ({
             </button>
           </div>
 
+          {/* Month vs previous month, income and savings */}
+          <div className="-mt-4 mb-6 text-center text-xs text-gray-600 space-y-2">
+            {prevMonthTotal > 0 && (() => {
+              const change = ((monthlyTotal - prevMonthTotal) / prevMonthTotal) * 100;
+              const prevName = new Date(filterYear, filterMonth - 1).toLocaleString('en-US', { month: 'short' });
+              return (
+                <p className={change > 0 ? 'text-red-600 font-medium' : 'text-green-600 font-medium'}>
+                  {change > 0 ? '▲' : '▼'} {Math.abs(change).toFixed(0)}% vs {prevName} ({formatAmount(prevMonthTotal, currency)})
+                </p>
+              );
+            })()}
+            {monthlyIncome > 0 && (
+              <div className="grid grid-cols-3 gap-2 text-left">
+                <div className="p-2 bg-green-50 rounded-lg">
+                  <p className="text-gray-500">Income</p>
+                  <p className="text-sm font-bold text-green-700">{formatAmount(monthlyIncome, currency)}</p>
+                </div>
+                <div className="p-2 bg-red-50 rounded-lg">
+                  <p className="text-gray-500">Spent</p>
+                  <p className="text-sm font-bold text-red-700">{formatAmount(monthlyTotal, currency)}</p>
+                </div>
+                <div className="p-2 bg-indigo-50 rounded-lg">
+                  <p className="text-gray-500">Saved</p>
+                  <p className={`text-sm font-bold ${monthlyIncome - monthlyTotal >= 0 ? 'text-indigo-700' : 'text-red-700'}`}>
+                    {formatAmount(monthlyIncome - monthlyTotal, currency)}
+                  </p>
+                  <p className="text-gray-500">{(((monthlyIncome - monthlyTotal) / monthlyIncome) * 100).toFixed(0)}% of income</p>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Monthly Transaction List */}
           <h3 className="text-xl font-semibold mb-3 text-gray-700">
             Transactions in {filterDateString} ({filteredExpenses.length})
@@ -506,10 +548,22 @@ export const StatsView: React.FC<StatsViewProps> = ({
                   showDate={true}
                   currency={currency}
                   isOnline={isOnline}
+                  onViewReceipt={onViewReceipt}
                 />
               ))}
             </div>
           )}
+
+          <TripsCard
+            trips={trips}
+            expenses={allExpenses}
+            exchangeRates={exchangeRates}
+            currency={currency}
+            isOnline={isOnline}
+            onDelete={handleDeleteExpense}
+            onEdit={handleEditExpense}
+            onViewReceipt={onViewReceipt}
+          />
         </>
       )}
     </div>

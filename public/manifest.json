@@ -1,10 +1,11 @@
 {
+    "id": "/expense-manager/",
     "short_name": "Money Track",
     "name": "Money Track - Expense Manager",
     "description": "Track your expenses effortlessly with offline support, cloud sync, and beautiful analytics. Works on all your devices.",
     "icons": [
         {
-            "src": "/expense-manager/expenses.png",
+            "src": "/expense-manager/icon-192.png",
             "type": "image/png",
             "sizes": "192x192",
             "purpose": "any"
@@ -16,14 +17,14 @@
             "purpose": "any"
         },
         {
-            "src": "/expense-manager/expenses.png",
+            "src": "/expense-manager/icon-maskable-512.png",
             "type": "image/png",
-            "sizes": "192x192",
+            "sizes": "512x512",
             "purpose": "maskable"
         }
     ],
-    "start_url": ".",
-    "scope": "/",
+    "start_url": "/expense-manager/",
+    "scope": "/expense-manager/",
     "display": "standalone",
     "orientation": "portrait-primary",
     "theme_color": "#4f46e5",

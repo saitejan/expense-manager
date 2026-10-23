@@ -4,9 +4,10 @@
  */
 
 import React from 'react';
-import { DollarSign, Search, HardDrive, Mail, ArrowRight, X } from 'lucide-react';
-import type { Expense, FilterMode } from '../../types';
+import { DollarSign, Search, HardDrive, Mail, ArrowRight, X, MessageSquare } from 'lucide-react';
+import type { Budgets, Expense, ExchangeRates, FilterMode } from '../../types';
 import { ExpenseItem } from '../../components/common/ExpenseItem';
+import { BudgetCard } from '../../components/common/BudgetCard';
 import { ExpenseItemSkeleton } from '../../components/common/ExpenseItemSkeleton';
 import { NetworkStatusBadge } from '../../components/common/NetworkStatusBadge';
 import { formatAmount } from '../../utils';
@@ -15,6 +16,7 @@ import { TAG_COLORS, DEFAULT_TAG_COLOR, PAGINATION_SIZE, SCROLL_THRESHOLD } from
 interface ListViewProps {
   listViewExpenses: Expense[];
   listViewTotal: number;
+  listViewIncome: number;
   visibleCount: number;
   setVisibleCount: React.Dispatch<React.SetStateAction<number>>;
   filterMode: FilterMode;
@@ -41,6 +43,13 @@ interface ListViewProps {
   pendingExpenses: Expense[];
   isGmailConnected: boolean;
   onSyncWithGmail: () => void;
+  budgets: Budgets | null;
+  spendExpenses: Expense[];
+  exchangeRates: ExchangeRates | null;
+  onOpenSettings: () => void;
+  smsCount: number;
+  onReviewSms: () => void;
+  onViewReceipt: (id: string) => void;
 }
 
 /**
@@ -50,6 +59,7 @@ interface ListViewProps {
 export const ListView: React.FC<ListViewProps> = ({
   listViewExpenses,
   listViewTotal,
+  listViewIncome,
   visibleCount,
   setVisibleCount,
   filterMode,
@@ -76,6 +86,13 @@ export const ListView: React.FC<ListViewProps> = ({
   pendingExpenses,
   isGmailConnected,
   onSyncWithGmail,
+  budgets,
+  spendExpenses,
+  exchangeRates,
+  onOpenSettings,
+  smsCount,
+  onReviewSms,
+  onViewReceipt,
 }) => {
   const [showPromo, setShowPromo] = React.useState(true);
   const visibleExpenses = listViewExpenses.slice(0, visibleCount);
@@ -102,11 +119,29 @@ export const ListView: React.FC<ListViewProps> = ({
       {/* Total Amount Display */}
       <div className="mb-4 p-4 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg shadow-md">
         <div className="text-white">
-          <p className="text-sm font-medium opacity-90">Total Amount</p>
+          <p className="text-sm font-medium opacity-90">Total Spent</p>
           <p className="text-3xl font-extrabold">{formatAmount(listViewTotal, currency)}</p>
+          {listViewIncome > 0 && (
+            <p className="text-sm font-semibold mt-1">Income +{formatAmount(listViewIncome, currency)}</p>
+          )}
           <p className="text-xs opacity-80 mt-1">{listViewExpenses.length} transaction{listViewExpenses.length !== 1 ? 's' : ''}</p>
         </div>
       </div>
+
+      {smsCount > 0 && (
+        <button
+          onClick={onReviewSms}
+          className="mb-4 w-full p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-3 text-left hover:bg-amber-100 transition"
+        >
+          <MessageSquare className="w-5 h-5 text-amber-600 shrink-0" />
+          <span className="flex-1 text-sm font-semibold text-amber-800">
+            {smsCount} SMS transaction{smsCount !== 1 ? 's' : ''} to review
+          </span>
+          <ArrowRight className="w-4 h-4 text-amber-600" />
+        </button>
+      )}
+
+      <BudgetCard budgets={budgets} expenses={spendExpenses} exchangeRates={exchangeRates} onSetBudget={onOpenSettings} />
 
       {/* Gmail Connect Promo (only for local users or connected users who haven't enabled Gmail sync) */}
       {!isGmailConnected && showPromo && (
@@ -290,6 +325,7 @@ export const ListView: React.FC<ListViewProps> = ({
               onEdit={handleEditExpense}
               currency={currency}
               isOnline={isOnline}
+              onViewReceipt={onViewReceipt}
             />
           ))}
           {hasMore && (

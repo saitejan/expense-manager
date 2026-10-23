@@ -14,5 +14,7 @@ export const CSV_HEADERS = [
   'timestamp',
   'dateStr',
   'timeStr',
-  'syncStatus'
+  'syncStatus',
+  'type',
+  'tripId'
 ] as const;

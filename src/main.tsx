@@ -135,6 +135,9 @@ const RootApp = () => {
   );
 };
 
+// Ask the browser not to evict local data (signed-out mode keeps expenses only in localStorage).
+navigator.storage?.persist?.();
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <RootApp />

@@ -4,7 +4,7 @@
  */
 
 import React, { useMemo } from 'react';
-import { Trash2, Edit2, Save } from 'lucide-react';
+import { Trash2, Edit2, Save, Repeat, Paperclip } from 'lucide-react';
 import type { Expense } from '../../types';
 import { formatAmount } from '../../utils';
 import { TAG_COLORS, DEFAULT_TAG_COLOR } from '../../constants';
@@ -16,6 +16,7 @@ interface ExpenseItemProps {
   showDate?: boolean;
   currency: string;
   isOnline: boolean;
+  onViewReceipt?: (id: string) => void;
 }
 
 /**
@@ -34,6 +35,7 @@ export const ExpenseItem: React.FC<ExpenseItemProps> = ({
   showDate = false,
   currency,
   isOnline,
+  onViewReceipt,
 }) => {
   const time = expense.timestamp.toLocaleTimeString('en-US', {
     hour: '2-digit',
@@ -51,6 +53,8 @@ export const ExpenseItem: React.FC<ExpenseItemProps> = ({
 
   const isPending = expense.syncStatus === 'pending';
   const isDeleteDisabled = expense.syncStatus === 'synced' && !isOnline;
+  const isIncome = expense.type === 'credit';
+  const isRecurring = expense.id.startsWith('rec-');
 
   const tagColor = useMemo(() => {
     return TAG_COLORS[expense.tag] || DEFAULT_TAG_COLOR;
@@ -70,6 +74,10 @@ export const ExpenseItem: React.FC<ExpenseItemProps> = ({
           <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${tagColor}`}>
             {expense.tag}
           </span>
+          {isIncome && (
+            <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-700">Income</span>
+          )}
+          {isRecurring && <Repeat className="w-3.5 h-3.5 text-gray-400" aria-label="Recurring" />}
           {isPending && (
             <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-orange-500 text-white flex items-center">
               <Save className="w-3 h-3 mr-1" /> Pending
@@ -79,9 +87,19 @@ export const ExpenseItem: React.FC<ExpenseItemProps> = ({
         </div>
       </div>
       <div className="flex items-center space-x-3 ml-4">
-        <span className="text-lg font-extrabold text-red-600 flex-shrink-0">
-          {formatAmount(expense.amount, expense.currency)}
+        <span className={`text-lg font-extrabold flex-shrink-0 ${isIncome ? 'text-green-600' : 'text-red-600'}`}>
+          {isIncome && '+'}{formatAmount(expense.amount, expense.currency)}
         </span>
+        {expense.hasReceipt && onViewReceipt && (
+          <button
+            onClick={() => onViewReceipt(expense.id)}
+            className="p-1 text-gray-400 hover:text-gray-600 transition duration-150 hover:bg-gray-100 rounded-full disabled:opacity-50"
+            aria-label="View Receipt"
+            disabled={!isOnline}
+          >
+            <Paperclip className="w-5 h-5" />
+          </button>
+        )}
         <button
           onClick={() => onEdit(expense.id)}
           className="p-1 text-blue-400 hover:text-blue-600 transition duration-150 hover:bg-blue-50 rounded-full disabled:opacity-50"
