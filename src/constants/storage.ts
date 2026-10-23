@@ -15,3 +15,4 @@ export const THEME_KEY = 'moneytrack_theme';
 export const BUDGETS_KEY = 'moneytrack_budgets';
 export const TRIPS_KEY = 'moneytrack_trips';
 export const MERCHANT_ALIASES_KEY = 'moneytrack_merchant_aliases';
+export const GMAIL_PROMO_DISMISSED_KEY = 'moneytrack_gmail_promo_dismissed';

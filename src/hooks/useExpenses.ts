@@ -536,7 +536,8 @@ export const useExpenses = ({
   }, [allExpenses, isOnline, setView, showModal]);
 
   // Handlers: Delete expense
-  const handleDeleteExpense = useCallback(async (id: string) => {
+  /** @param onDeleted - Runs after the delete succeeds (the edit screen closes itself with it) */
+  const handleDeleteExpense = useCallback(async (id: string, onDeleted?: () => void) => {
     if (!id) return;
 
     const expense = allExpenses.find(e => e.id === id);
@@ -553,7 +554,7 @@ export const useExpenses = ({
             saveAllExpensesToLocalStorage(expenses, newPending);
             return newPending;
           });
-          showModal("Expense Deleted", "Pending expense removed.");
+          onDeleted?.();
         }
       );
       return;
@@ -573,6 +574,7 @@ export const useExpenses = ({
             return;
           }
           await deleteExpenseFromFirebase(db, user.uid, id);
+          onDeleted?.();
         } catch (error: any) {
           console.error("Error deleting expense:", error);
           showModal("Delete Error", `Failed to delete expense: ${error.message}`);

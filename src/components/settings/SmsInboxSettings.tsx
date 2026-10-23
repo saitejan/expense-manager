@@ -1,9 +1,9 @@
 /**
- * Setup for SMS auto-import via an iOS Shortcuts "Message" automation
+ * Setup for the Inbox: bank SMS (iOS Shortcuts "Message" automation) and voice entries (Siri / Back Tap)
  */
 
 import React, { useState } from 'react';
-import { MessageSquare, Copy, Check } from 'lucide-react';
+import { Inbox, Copy, Check } from 'lucide-react';
 import { showModal } from '../../utils';
 
 interface SmsInboxSettingsProps {
@@ -24,7 +24,7 @@ export const SmsInboxSettings: React.FC<SmsInboxSettingsProps> = ({ isAuthentica
     try {
       await action();
     } catch (error) {
-      showModal('SMS Import', `Could not update SMS import: ${(error as Error).message}`);
+      showModal('Inbox', `Could not update the Inbox: ${(error as Error).message}`);
     } finally {
       setBusy(false);
     }
@@ -43,16 +43,16 @@ export const SmsInboxSettings: React.FC<SmsInboxSettingsProps> = ({ isAuthentica
 
   return (
     <div className="border-b pb-6 border-gray-100">
-      <h3 className="text-xl font-semibold mb-1 text-indigo-700 flex items-center gap-2"><MessageSquare className="w-5 h-5" /> SMS Auto-Import</h3>
+      <h3 className="text-xl font-semibold mb-1 text-indigo-700 flex items-center gap-2"><Inbox className="w-5 h-5" /> Inbox</h3>
       <p className="text-xs text-gray-500 mb-3">
-        An iPhone Shortcuts automation sends each bank SMS here. You review them before anything is added.
+        Bank SMS (via a Shortcuts automation) and voice entries (Siri or Back Tap) arrive here. You review them before anything is added.
       </p>
 
       {!isAuthenticated ? (
-        <p className="text-sm text-gray-600">Sign in to use SMS auto-import.</p>
+        <p className="text-sm text-gray-600">Sign in to use the Inbox.</p>
       ) : !inboxUrl ? (
         <button onClick={() => run(onEnable)} disabled={busy || !isOnline} className="w-full px-4 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50">
-          Turn On SMS Import
+          Turn On Inbox
         </button>
       ) : (
         <div className="space-y-3">
@@ -64,7 +64,7 @@ export const SmsInboxSettings: React.FC<SmsInboxSettingsProps> = ({ isAuthentica
                 {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />} {copied ? 'Copied' : 'Copy'}
               </button>
             </div>
-            <p className="text-xs text-amber-700 mt-1">Keep it private. Anyone with it can add messages to your review queue (never straight into your expenses).</p>
+            <p className="text-xs text-amber-700 mt-1">Keep it private. Anyone with it can add entries to your Inbox (never straight into your expenses).</p>
           </div>
 
           <ol className="list-decimal pl-5 space-y-1 text-sm text-gray-700">
@@ -89,14 +89,14 @@ export const SmsInboxSettings: React.FC<SmsInboxSettingsProps> = ({ isAuthentica
 
           <div className="flex gap-2">
             <button
-              onClick={() => showModal('New Import URL', 'The current URL stops working and messages waiting for review are discarded. You must paste the new URL into your Shortcut.', true, () => run(onEnable))}
+              onClick={() => showModal('New Import URL', 'The current URL stops working and entries waiting for review are discarded. Paste the new URL into every Shortcut that uses it.', true, () => run(onEnable))}
               disabled={busy || !isOnline}
               className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50"
             >
               New URL
             </button>
             <button
-              onClick={() => showModal('Turn Off SMS Import', 'The URL stops working and messages waiting for review are discarded.', true, () => run(onDisable))}
+              onClick={() => showModal('Turn Off Inbox', 'The URL stops working and entries waiting for review are discarded.', true, () => run(onDisable))}
               disabled={busy || !isOnline}
               className="flex-1 px-4 py-2 text-sm font-medium text-red-700 bg-red-50 rounded-lg hover:bg-red-100 disabled:opacity-50"
             >

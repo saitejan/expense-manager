@@ -1,10 +1,11 @@
 /* index.css */
 @import "tailwindcss";
 
-/* Prevent horizontal overflow on mobile */
+/* Prevent horizontal overflow on mobile.
+   clip, not hidden: hidden turns these into scroll containers, which silently breaks the sticky header and tab bar. */
 html,
 body {
-  overflow-x: hidden;
+  overflow-x: clip;
   max-width: 100vw;
   position: relative;
 }
@@ -25,7 +26,7 @@ body {
 /* Ensure root container doesn't overflow */
 #root {
   max-width: 100vw;
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 /* Smooth fade-in for content transitions */

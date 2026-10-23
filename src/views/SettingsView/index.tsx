@@ -121,7 +121,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   smsInboxProps,
 }) => {
   return (
-    <div className="p-4 bg-white rounded-xl shadow-lg">
+    <div className="px-4 py-4 bg-white sm:rounded-xl sm:shadow-lg">
       <h2 className="text-2xl font-bold mb-6 text-gray-800 flex items-center">
         <SettingsIcon className="w-5 h-5 mr-2 text-indigo-500" />
         Application Settings

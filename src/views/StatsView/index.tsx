@@ -5,7 +5,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Calendar, ArrowLeft, ArrowRight, BarChart3, Grid3x3 } from 'lucide-react';
 import type { Expense, AnnualTotal, ExchangeRates, Trip } from '../../types';
-import { ExpenseItem } from '../../components/common/ExpenseItem';
+import { TransactionList } from '../../components/common/TransactionList';
 import { TripsCard } from '../../components/common/TripsCard';
 import { formatAmount } from '../../utils';
 import { ExpenseTrendChart } from '../../components/charts/ExpenseTrendChart';
@@ -29,10 +29,8 @@ interface StatsViewProps {
   handleNextYear: () => void;
   handlePrevMonth: () => void;
   handleNextMonth: () => void;
-  handleDeleteExpense: (id: string) => void;
   handleEditExpense: (id: string) => void;
   currency: string;
-  isOnline: boolean;
   allExpenses: Expense[];
   statsCurrency: string;
   updateStatsCurrency: (currency: string) => void;
@@ -59,10 +57,8 @@ export const StatsView: React.FC<StatsViewProps> = ({
   handleNextYear,
   handlePrevMonth,
   handleNextMonth,
-  handleDeleteExpense,
   handleEditExpense,
   currency,
-  isOnline,
   allExpenses,
   statsCurrency,
   updateStatsCurrency,
@@ -222,7 +218,7 @@ export const StatsView: React.FC<StatsViewProps> = ({
   }, [selectedCategory, scopedExpenses]);
 
   return (
-    <div className="p-4 bg-white rounded-xl shadow-lg">
+    <div className="px-4 py-4 bg-white sm:rounded-xl sm:shadow-lg">
       {/* Header with View Toggle */}
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-2xl font-bold text-gray-800 flex items-center">
@@ -234,20 +230,16 @@ export const StatsView: React.FC<StatsViewProps> = ({
         <div className="flex gap-2">
           <button
             onClick={() => setViewMode('grid')}
-            className={`p - 2 rounded - lg transition ${viewMode === 'grid'
-              ? 'bg-indigo-600 text-white'
-              : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-              } `}
+            aria-pressed={viewMode === 'grid'}
+            className={`p-2 rounded-lg transition ${viewMode === 'grid' ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}
             title="Grid View"
           >
             <Grid3x3 className="w-5 h-5" />
           </button>
           <button
             onClick={() => setViewMode('chart')}
-            className={`p - 2 rounded - lg transition ${viewMode === 'chart'
-              ? 'bg-indigo-600 text-white'
-              : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-              } `}
+            aria-pressed={viewMode === 'chart'}
+            className={`p-2 rounded-lg transition ${viewMode === 'chart' ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}
             title="Chart View"
           >
             <BarChart3 className="w-5 h-5" />
@@ -379,20 +371,13 @@ export const StatsView: React.FC<StatsViewProps> = ({
                   Clear filter
                 </button>
               </div>
-              <div className="space-y-3" style={{ maxHeight: '40vh', overflowY: 'auto' }}>
-                {categoryFilteredExpenses.map(expense => (
-                  <ExpenseItem
-                    key={expense.id}
-                    expense={expense}
-                    onDelete={handleDeleteExpense}
-                    onEdit={handleEditExpense}
-                    showDate
-                    currency={currency}
-                    isOnline={isOnline}
-                    onViewReceipt={onViewReceipt}
-                  />
-                ))}
-              </div>
+              <TransactionList
+                expenses={categoryFilteredExpenses}
+                currency={currency}
+                exchangeRates={exchangeRates}
+                onEdit={handleEditExpense}
+                onViewReceipt={onViewReceipt}
+              />
             </div>
           )}
 
@@ -458,20 +443,21 @@ export const StatsView: React.FC<StatsViewProps> = ({
           <div className="mb-8 border border-gray-200 rounded-xl p-4 bg-gray-50">
             <h3 className="text-xl font-semibold mb-3 text-gray-700">Yearly Snapshot</h3>
             <p className="text-xs text-gray-500 mb-3">Click on any month to view transactions below</p>
-            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2">
               {annualTotals.map((data, index) => {
                 const isSelected = filterMonth === index;
                 return (
                   <button
                     key={index}
                     onClick={() => handleMonthClick(index)}
-                    className={`p - 2 text - center bg - white rounded - lg shadow - sm border - 2 transition cursor - pointer ${isSelected
+                    aria-pressed={isSelected}
+                    className={`px-1 py-2 text-center bg-white rounded-lg shadow-sm border-2 transition ${isSelected
                       ? 'border-indigo-500 ring-2 ring-indigo-300 shadow-md'
                       : 'border-indigo-100 hover:shadow-md hover:border-indigo-300'
-                      } `}
+                      }`}
                   >
                     <div className="text-xs font-medium text-indigo-600">{data.monthName}</div>
-                    <div className="text-sm font-bold text-gray-900">{formatAmount(data.total, currency)}</div>
+                    <div className="text-sm font-bold text-gray-900 whitespace-nowrap">{formatAmount(data.total, currency, { whole: true })}</div>
                     <div className="text-xs text-gray-500">{data.count} items</div>
                   </button>
                 );
@@ -480,7 +466,7 @@ export const StatsView: React.FC<StatsViewProps> = ({
             <p className="mt-4 text-sm text-gray-600">
               Year Total Expense:
               <span className="font-bold text-indigo-600 ml-1">
-                {formatAmount(annualTotals.reduce((sum, m) => sum + m.total, 0), currency)}
+                {formatAmount(annualTotals.reduce((sum, m) => sum + m.total, 0), currency, { whole: true })}
               </span>
             </p>
           </div>
@@ -538,20 +524,13 @@ export const StatsView: React.FC<StatsViewProps> = ({
           {filteredExpenses.length === 0 ? (
             <p className="text-center text-gray-500 py-6 border border-dashed rounded-lg">No expenses recorded for this month.</p>
           ) : (
-            <div className="space-y-3" style={{ maxHeight: "50vh", overflowY: "auto" }}>
-              {filteredExpenses.map((expense) => (
-                <ExpenseItem
-                  key={expense.id}
-                  expense={expense}
-                  onDelete={handleDeleteExpense}
-                  onEdit={handleEditExpense}
-                  showDate={true}
-                  currency={currency}
-                  isOnline={isOnline}
-                  onViewReceipt={onViewReceipt}
-                />
-              ))}
-            </div>
+            <TransactionList
+              expenses={filteredExpenses}
+              currency={currency}
+              exchangeRates={exchangeRates}
+              onEdit={handleEditExpense}
+              onViewReceipt={onViewReceipt}
+            />
           )}
 
           <TripsCard
@@ -559,8 +538,6 @@ export const StatsView: React.FC<StatsViewProps> = ({
             expenses={allExpenses}
             exchangeRates={exchangeRates}
             currency={currency}
-            isOnline={isOnline}
-            onDelete={handleDeleteExpense}
             onEdit={handleEditExpense}
             onViewReceipt={onViewReceipt}
           />

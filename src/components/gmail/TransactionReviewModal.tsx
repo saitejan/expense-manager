@@ -14,7 +14,7 @@ interface TransactionReviewModalProps {
     onImport: (selectedTransactions: ParsedTransaction[]) => void;
     onUpdateTransaction: (index: number, updates: Partial<ParsedTransaction>) => void;
     availableTags: string[];
-    /** SMS messages are removed from the inbox once reviewed, selected or not */
+    /** Inbox entries (SMS, Siri, Back Tap) are removed once reviewed, selected or not */
     mode: 'gmail' | 'sms';
 }
 
@@ -58,12 +58,12 @@ export const TransactionReviewModal: React.FC<TransactionReviewModalProps> = ({
     };
 
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col">
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 sm:p-4">
+            <div role="dialog" aria-modal="true" aria-labelledby="review-title" className="bg-white rounded-t-2xl sm:rounded-lg shadow-xl max-w-4xl w-full max-h-[92vh] flex flex-col">
                 {/* Header */}
-                <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+                <div className="px-4 py-3 sm:p-6 border-b border-gray-200 flex items-center justify-between">
                     <div>
-                        <h2 className="text-2xl font-bold text-gray-900">Review Transactions</h2>
+                        <h2 id="review-title" className="text-xl sm:text-2xl font-bold text-gray-900">Review</h2>
                         <p className="text-sm text-gray-500 mt-1">
                             {transactions.length} transaction{transactions.length !== 1 ? 's' : ''} found • {selectedCount} selected
                         </p>
@@ -77,7 +77,7 @@ export const TransactionReviewModal: React.FC<TransactionReviewModalProps> = ({
                 </div>
 
                 {/* Content */}
-                <div className="flex-1 overflow-y-auto p-6">
+                <div className="flex-1 overflow-y-auto p-3 sm:p-6">
                     {transactions.length === 0 ? (
                         <div className="text-center py-12">
                             <p className="text-gray-500">No new transactions found</p>
@@ -109,7 +109,7 @@ export const TransactionReviewModal: React.FC<TransactionReviewModalProps> = ({
                                                     value={transaction.description}
                                                     onChange={(e) => onUpdateTransaction(index, { description: e.target.value })}
                                                     aria-label="Description"
-                                                    className="flex-1 min-w-0 px-2 py-1.5 text-sm font-semibold text-gray-900 bg-white border border-gray-300 rounded-lg"
+                                                    className="flex-1 min-w-0 px-2 py-1.5 text-base font-semibold text-gray-900 bg-white border border-gray-300 rounded-lg"
                                                 />
                                                 <div className="flex gap-2">
                                                     <div className={`flex items-center gap-1 px-2 border rounded-lg bg-white ${transaction.transactionType === 'credit' ? 'border-green-300' : 'border-gray-300'}`}>
@@ -125,14 +125,14 @@ export const TransactionReviewModal: React.FC<TransactionReviewModalProps> = ({
                                                             onChange={(e) => onUpdateTransaction(index, { amount: parseFloat(e.target.value) || 0 })}
                                                             aria-label="Amount"
                                                             placeholder="Amount"
-                                                            className="w-24 py-1.5 text-sm font-bold bg-transparent outline-none"
+                                                            className="w-24 py-1.5 text-base font-bold bg-transparent outline-none"
                                                         />
                                                     </div>
                                                     <select
                                                         value={transaction.suggestedTag}
                                                         onChange={(e) => onUpdateTransaction(index, { suggestedTag: e.target.value })}
                                                         aria-label="Tag"
-                                                        className="px-2 py-1.5 text-sm bg-white border border-gray-300 rounded-lg"
+                                                        className="flex-1 sm:flex-none px-2 py-1.5 text-base bg-white border border-gray-300 rounded-lg"
                                                     >
                                                         {[...new Set([transaction.suggestedTag, ...availableTags])].map(tag => (
                                                             <option key={tag} value={tag}>{tag}</option>
@@ -160,7 +160,7 @@ export const TransactionReviewModal: React.FC<TransactionReviewModalProps> = ({
 
                                             {/* Source text */}
                                             <p className={`text-xs text-gray-400 mt-2 ${mode === 'sms' ? 'line-clamp-3' : 'truncate'}`}>
-                                                {mode === 'sms' ? 'SMS' : 'From'}: {transaction.rawEmailSubject}
+                                                {mode === 'sms' ? 'Received' : 'From'}: {transaction.rawEmailSubject}
                                             </p>
                                         </div>
                                     </div>
@@ -171,7 +171,7 @@ export const TransactionReviewModal: React.FC<TransactionReviewModalProps> = ({
                 </div>
 
                 {/* Footer */}
-                <div className="p-6 border-t border-gray-200 flex items-center justify-between">
+                <div className="px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:p-6 border-t border-gray-200 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
                     <div>
                         <button
                             onClick={handleSelectAll}
@@ -180,20 +180,20 @@ export const TransactionReviewModal: React.FC<TransactionReviewModalProps> = ({
                             {transactions.every(t => t.selected) ? 'Deselect All' : 'Select All'}
                         </button>
                         <p className="text-xs text-gray-500 mt-1">
-                            Renamed payees are remembered.{mode === 'sms' && ' Unselected messages are discarded.'}
+                            Renamed payees are remembered.{mode === 'sms' && ' Unselected entries are discarded.'}
                         </p>
                     </div>
-                    <div className="flex gap-3">
+                    <div className="flex gap-3 w-full sm:w-auto">
                         <button
                             onClick={onClose}
-                            className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                            className="flex-1 sm:flex-none px-6 py-3 sm:py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
                         >
                             Cancel
                         </button>
                         <button
                             onClick={handleImport}
                             disabled={hasInvalidSelection || (selectedCount === 0 && mode === 'gmail')}
-                            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="flex-[2] sm:flex-none px-6 py-3 sm:py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {selectedCount === 0 ? 'Discard All' : `Import ${selectedCount} Transaction${selectedCount !== 1 ? 's' : ''}`}
                         </button>

@@ -6,7 +6,7 @@ import React, { useMemo, useState } from 'react';
 import { Plane, ChevronDown, ChevronRight } from 'lucide-react';
 import type { Expense, ExchangeRates, Trip } from '../../types';
 import { formatAmount, getExpenseAmountInCurrency } from '../../utils';
-import { ExpenseItem } from './ExpenseItem';
+import { TransactionList } from './TransactionList';
 
 interface TripsCardProps {
   trips: Record<string, Trip>;
@@ -14,15 +14,13 @@ interface TripsCardProps {
   expenses: Expense[];
   exchangeRates: ExchangeRates | null;
   currency: string;
-  isOnline: boolean;
-  onDelete: (id: string) => void;
   onEdit: (id: string) => void;
   onViewReceipt: (id: string) => void;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export const TripsCard: React.FC<TripsCardProps> = ({ trips, expenses, exchangeRates, currency, isOnline, onDelete, onEdit, onViewReceipt }) => {
+export const TripsCard: React.FC<TripsCardProps> = ({ trips, expenses, exchangeRates, currency, onEdit, onViewReceipt }) => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const summaries = useMemo(() => Object.entries(trips)
@@ -78,12 +76,10 @@ export const TripsCard: React.FC<TripsCardProps> = ({ trips, expenses, exchangeR
                 )}
               </button>
               {expanded && (
-                <div className="mt-3 space-y-2">
+                <div className="mt-3">
                   {tripExpenses.length === 0
                     ? <p className="text-sm text-gray-500">No expenses on this trip yet.</p>
-                    : tripExpenses.map(expense => (
-                      <ExpenseItem key={expense.id} expense={expense} onDelete={onDelete} onEdit={onEdit} showDate currency={currency} isOnline={isOnline} onViewReceipt={onViewReceipt} />
-                    ))}
+                    : <TransactionList expenses={tripExpenses} currency={currency} exchangeRates={exchangeRates} onEdit={onEdit} onViewReceipt={onViewReceipt} />}
                 </div>
               )}
             </div>

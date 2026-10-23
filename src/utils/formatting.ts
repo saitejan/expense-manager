@@ -23,13 +23,18 @@ export const timestampToDate = (timestamp: number | Date | string): Date => {
  * @param dynamicCurrency - Currency code (e.g., 'USD', 'EUR', 'INR')
  * @returns Formatted currency string
  */
-export const formatAmount = (amount: number, dynamicCurrency: string): string => {
+export const formatAmount = (amount: number, dynamicCurrency: string, options: { whole?: boolean } = {}): string => {
+  // Paise only when there are some: ₹450, ₹946.20. `whole` rounds for tight spaces like month tiles.
+  const fractionDigits = options.whole || Math.abs(amount % 1) < 0.005 ? 0 : 2;
   try {
-    return new Intl.NumberFormat('en-US', {
+    // Indian grouping for rupees: ₹2,21,234
+    return new Intl.NumberFormat(dynamicCurrency === 'INR' ? 'en-IN' : 'en-US', {
       style: 'currency',
       currency: dynamicCurrency,
+      minimumFractionDigits: fractionDigits,
+      maximumFractionDigits: fractionDigits,
     }).format(amount);
-  } catch (e) {
-    return `${dynamicCurrency} ${parseFloat(amount.toFixed(2))}`;
+  } catch {
+    return `${dynamicCurrency} ${parseFloat(amount.toFixed(fractionDigits))}`;
   }
 };

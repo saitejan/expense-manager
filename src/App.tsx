@@ -99,6 +99,11 @@ const App = () => {
 
   const [view, setView] = useState<ViewType>('list');
 
+  // Views share one page scroll; start each screen at the top
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [view]);
+
   // Fetch exchange rates for stats view (24-hour cache)
   const { rates: statsExchangeRates } = useExchangeRate('stats');
 
@@ -752,9 +757,9 @@ const App = () => {
         )}
 
         {/* Header */}
-        <header className="bg-white shadow-sm p-4 pt-[calc(1rem+env(safe-area-inset-top))] sticky top-0 z-10">
+        <header className="bg-white shadow-sm px-4 py-3 pt-[calc(0.75rem+env(safe-area-inset-top))] sticky top-0 z-10">
           <div className="max-w-4xl mx-auto flex justify-between items-center">
-            <h1 className="text-2xl font-bold text-indigo-600">Money Track</h1>
+            <h1 className="text-xl font-bold text-indigo-600">Money Track</h1>
             <div className="flex items-center gap-3">
               {isAuthenticated && user?.email ? (
                 <div className="text-sm text-gray-600 hidden sm:block">
@@ -774,7 +779,7 @@ const App = () => {
         </header>
 
         {/* Main Content */}
-        <main className="flex-grow p-4 max-w-4xl mx-auto w-full">
+        <main className="flex-grow sm:p-4 max-w-4xl mx-auto w-full">
           {view === 'list' && (
             <ListView
               listViewExpenses={listViewExpenses}
@@ -797,7 +802,6 @@ const App = () => {
               toggleTagSelection={toggleTagSelection}
               setSelectedTags={setSelectedTags}
               allAvailableTags={allAvailableTags}
-              handleDeleteExpense={handleDeleteExpense}
               handleEditExpense={handleEditExpense}
               currency={currency}
               isOnline={isOnline}
@@ -825,10 +829,10 @@ const App = () => {
               loading={loading}
               isAuthenticated={isAuthenticated}
               isOnline={isOnline}
-              currency={currency}
               expenses={allExpenses}
               availableTags={allAvailableTags}
               editingExpenseId={editingExpenseId}
+              onDelete={() => editingExpenseId && handleDeleteExpense(editingExpenseId, handleFormClose)}
               trips={trips}
               receiptDraft={receiptDraft}
               hasSavedReceipt={!!allExpenses.find(e => e.id === editingExpenseId)?.hasReceipt}
@@ -859,10 +863,8 @@ const App = () => {
               handleNextYear={handleNextYear}
               handlePrevMonth={handlePrevMonth}
               handleNextMonth={handleNextMonth}
-              handleDeleteExpense={handleDeleteExpense}
               handleEditExpense={handleEditExpense}
               currency={currency}
-              isOnline={isOnline}
               allExpenses={spendExpenses}
               statsCurrency={statsCurrency}
               updateStatsCurrency={updateStatsCurrency}
@@ -946,7 +948,7 @@ const App = () => {
         </main>
 
         {/* Navigation */}
-        <nav className="bg-white border-t border-gray-200 sticky bottom-0 z-10 pb-[env(safe-area-inset-bottom)]">
+        {view !== 'add' && <nav className="bg-white border-t border-gray-200 sticky bottom-0 z-10 pb-[env(safe-area-inset-bottom)]">
           <div className="max-w-4xl mx-auto flex justify-around items-center p-3">
             <button
               onClick={() => setView('list')}
@@ -983,7 +985,7 @@ const App = () => {
               <span className="text-xs mt-1">Settings</span>
             </button>
           </div>
-        </nav>
+        </nav>}
         {/* Modal for Gmail Review */}
         <TransactionReviewModal
           isOpen={reviewSource !== null}
