@@ -50,6 +50,7 @@ App.tsx (orchestrator, all state lives here)
 - **Income lives with expenses.** `type: 'credit'` marks income. `useExpenses` exposes `spendExpenses` (debits only); every total, chart and budget must use it.
 - **One serializer.** `toFirebaseExpense` / `fromFirebaseExpense` in `services/firebase/database.ts` are the only place an expense's RTDB shape is defined. Optional fields are omitted, never `undefined` (RTDB rejects undefined).
 - **Serverless iPhone features.** Recurring expenses are created when the app opens (iOS gives web apps no background time). SMS import: an iOS Shortcuts automation POSTs to `smsInbox/{token}.json` with no auth; the token is a write-only capability enforced by rules. Receipts are compressed JPEG data URLs in RTDB (Firebase Storage needs the Blaze plan).
+- **Backups.** CSV covers expenses only (works signed out). Full backup is JSON of `users/{uid}` expenses, recurring and preferences, without receipts or `smsInboxToken`. Both restores are one atomic `update()`, keep expense ids (only `local-`/`imported-` get push keys), keep `hasReceipt` only where the account has the photo, and never delete.
 - **Dark mode** is a palette-variable remap in `index.css` under `:root[data-theme='dark']`, set before first paint by the inline script in `index.html`. No `dark:` variants.
 
 ## Project Structure
@@ -122,7 +123,8 @@ src/
 │   ├── recurring.ts            # Due-month math for recurring rules
 │   ├── transactions.ts         # Push-id time, duplicate detection for imports
 │   ├── trips.ts                # Trip covering a date
-│   └── image.ts                # Receipt photo compression
+│   ├── image.ts                # Receipt photo compression
+│   └── files.ts                # Share-sheet/download save, file picker
 └── config/
     └── firebase.ts             # Firebase config from env vars
 ```

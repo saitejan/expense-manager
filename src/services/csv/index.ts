@@ -4,7 +4,47 @@
  */
 
 import type { Expense } from '../../types';
-import { CSV_HEADERS } from '../../constants';
+import { CSV_HEADERS } from '../../constants/csv.ts';
+
+/** Quotes a text field; doubled quotes escape quotes inside it */
+const quote = (value: string) => `"${value.replace(/"/g, '""')}"`;
+
+/**
+ * Splits CSV text into rows of fields (RFC 4180).
+ * Quoted fields may hold commas, doubled quotes and line breaks.
+ */
+const parseCsvRows = (csv: string): string[][] => {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = '';
+  let quoted = false;
+  for (let i = 0; i < csv.length; i++) {
+    const c = csv[i];
+    if (quoted) {
+      if (c === '"' && csv[i + 1] === '"') { field += '"'; i++; }
+      else if (c === '"') quoted = false;
+      else field += c;
+    } else if (c === '"') {
+      quoted = true;
+    } else if (c === ',') {
+      row.push(field);
+      field = '';
+    } else if (c === '\n' || c === '\r') {
+      if (c === '\r' && csv[i + 1] === '\n') i++;
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = '';
+    } else {
+      field += c;
+    }
+  }
+  if (field || row.length) {
+    row.push(field);
+    rows.push(row);
+  }
+  return rows;
+};
 
 /**
  * Converts an array of expenses to CSV format
@@ -21,14 +61,14 @@ export const convertToCsv = (data: Expense[]): string => {
     e.currency,
     e.amountINR?.toString() || '0',
     e.amountUSD?.toString() || '0',
-    `"${e.description.replace(/"/g, '""')}"`,
-    e.tag,
+    quote(e.description),
+    quote(e.tag),
     e.timestamp.toISOString(),
     e.dateStr,
     e.timeStr,
     e.syncStatus,
     e.type || 'debit',
-    e.tripId || '',
+    quote(e.tripId || ''),
   ].join(',')).join('\n');
 
   return headers + rows;
@@ -42,10 +82,10 @@ export const convertToCsv = (data: Expense[]): string => {
  * @throws Error if CSV format is invalid
  */
 export const parseCsv = (csv: string): Expense[] => {
-  const lines = csv.trim().split('\n');
+  const lines = parseCsvRows(csv.trim());
   if (lines.length < 2) return [];
 
-  const headers = lines[0].split(',').map(h => h.trim());
+  const headers = lines[0].map(h => h.trim());
   // Allow old CSV format without amountINR/amountUSD
   const hasBaseAmounts = headers.includes('amountINR') && headers.includes('amountUSD');
   // Columns added later; older backups simply don't have them
@@ -54,7 +94,7 @@ export const parseCsv = (csv: string): Expense[] => {
 
   const data: Expense[] = [];
   for (let i = 1; i < lines.length; i++) {
-    const row = lines[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+    const row = lines[i];
 
     if (row.length >= 9) {
       const amount = parseFloat(row[2]);
@@ -82,7 +122,7 @@ export const parseCsv = (csv: string): Expense[] => {
         currency: row[3],
         amountINR,
         amountUSD,
-        description: row[descriptionIndex].replace(/^"|"$/g, '').replace(/""/g, '"'),
+        description: row[descriptionIndex],
         tag: row[tagIndex],
         timestamp: new Date(row[timestampIndex]),
         dateStr: row[dateStrIndex],

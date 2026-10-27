@@ -32,6 +32,8 @@ interface SettingsViewProps {
   allExpenses: Expense[];
   downloadCsv: () => void;
   parseCsvAndRestore: () => void;
+  downloadFullBackup: () => void;
+  restoreFullBackup: () => void;
   restoredData: Expense[] | null;
   syncRestoredCsvToFirebase: (data: Expense[], userId: string) => void;
   setRestoredData: React.Dispatch<React.SetStateAction<Expense[] | null>>;
@@ -101,6 +103,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   allExpenses,
   downloadCsv,
   parseCsvAndRestore,
+  downloadFullBackup,
+  restoreFullBackup,
   restoredData,
   syncRestoredCsvToFirebase,
   setRestoredData,
@@ -277,6 +281,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             )}
           </div>
         </div>
+
+        {/* Full JSON Backup/Restore */}
+        {isAuthenticated && (
+          <div>
+            <h3 className="text-xl font-semibold mb-3 text-indigo-700">Full Backup & Restore</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Expenses, recurring rules, budgets, trips and learned payee names in one JSON file. Receipt photos are not included.
+            </p>
+            <div className="flex space-x-4">
+              <button
+                onClick={downloadFullBackup}
+                disabled={loading || !isOnline}
+                className="flex items-center px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg shadow-md hover:bg-blue-700 transition duration-150 disabled:opacity-50 flex-grow justify-center"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Full Backup
+              </button>
+              <button
+                onClick={restoreFullBackup}
+                disabled={loading || !isOnline}
+                className="flex items-center px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg shadow-md hover:bg-red-700 transition duration-150 disabled:opacity-50 flex-grow justify-center"
+              >
+                <Upload className="w-4 h-4 mr-2" />
+                Restore
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* CSV Local Backup/Restore */}
         <div>

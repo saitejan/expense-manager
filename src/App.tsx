@@ -3,7 +3,7 @@
  * Orchestrates state management and renders appropriate views
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { PlusCircle, DollarSign, Calendar, Settings, Cloud } from 'lucide-react';
 
 // Types
@@ -31,6 +31,8 @@ import {
   deleteExpenseFromFirebase,
   syncPendingExpensesToFirebase as serviceSyncPending,
   syncRestoredCsvToFirebase as serviceSyncCsvToFirebase,
+  exportUserBackup,
+  restoreUserBackup,
   deleteAllExpensesFromFirebase,
   // migrateExpensesToDefaultCurrency,
   // migrateExpensesToBaseAmounts,
@@ -41,6 +43,7 @@ import { getExchangeRates, convertToBaseAmounts } from './services/exchangeRate'
 
 // Utils
 import { showModal } from './utils';
+import { saveFile, pickTextFile } from './utils/files';
 import { markPossibleDuplicates, applyMerchantAliases, learnMerchantAliases } from './utils/transactions';
 import { findTripIdForDate } from './utils/trips';
 
@@ -48,7 +51,6 @@ import { findTripIdForDate } from './utils/trips';
 import { AuthView } from './views/AuthView';
 import { AddExpenseView } from './views/AddExpenseView';
 import { ListView } from './views/ListView';
-import { StatsView } from './views/StatsView';
 import { SettingsView } from './views/SettingsView';
 
 // Components
@@ -57,6 +59,10 @@ import { DonationPrompt } from './components/common/DonationPrompt';
 import { LoadingSpinner } from './components/common/LoadingSpinner';
 import { TransactionReviewModal } from './components/gmail/TransactionReviewModal';
 import { ReceiptViewer } from './components/common/ReceiptViewer';
+
+// Stats pulls in Recharts, the largest dependency, so it loads as its own chunk.
+const loadStatsView = () => import('./views/StatsView');
+const StatsView = lazy(() => loadStatsView().then((m) => ({ default: m.StatsView })));
 
 const App = () => {
   const isOnline = useOnlineStatus();
@@ -103,6 +109,12 @@ const App = () => {
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [view]);
+
+  // Fetch the stats chunk after first paint so the service worker caches it and Stats works offline
+  useEffect(() => {
+    const id = setTimeout(loadStatsView, 2000);
+    return () => clearTimeout(id);
+  }, []);
 
   // Fetch exchange rates for stats view (24-hour cache)
   const { rates: statsExchangeRates } = useExchangeRate('stats');
@@ -472,7 +484,7 @@ const App = () => {
           db,
           userId,
           dataToSync,
-          new Set(expenses.map(e => e.id)),
+          expenses,
           (count: number) => {
             setRestoredData(null);
             showModal('Import Complete', `${count} records processed and synchronized with the cloud.`);
@@ -497,25 +509,59 @@ const App = () => {
     const fileName = `moneytrack_backup_${new Date().toISOString().substring(0, 10)}.csv`;
     const file = new File([csvContent], fileName, { type: 'text/csv' });
 
-    // iOS home-screen apps handle downloads poorly; the share sheet saves to Files/iCloud or sends anywhere.
-    if (navigator.canShare?.({ files: [file] })) {
-      navigator.share({ files: [file], title: 'Money Track backup' })
-        .catch((error: Error) => {
-          if (error.name !== 'AbortError') showModal('Backup Failed', `Could not share the CSV: ${error.message}`);
-        });
+    saveFile(file)
+      .then((saved) => saved && showModal('Backup Successful', `${allExpenses.length} expenses saved as CSV.`))
+      .catch((error: Error) => showModal('Backup Failed', `Could not save the CSV: ${error.message}`));
+  };
+
+  const downloadFullBackup = async () => {
+    if (!db || !user) return;
+    if (pendingExpenses.length > 0) {
+      showModal('Sync First', `${pendingExpenses.length} expenses have not synced to the cloud yet. Go online, let them sync, then back up.`);
       return;
     }
+    try {
+      setLoading(true);
+      const backup = await exportUserBackup(db, user.uid);
+      setLoading(false);
+      const fileName = `moneytrack_full_backup_${new Date().toISOString().substring(0, 10)}.json`;
+      const saved = await saveFile(new File([JSON.stringify(backup)], fileName, { type: 'application/json' }));
+      if (saved) {
+        showModal('Backup Successful', `${Object.keys(backup.expenses).length} expenses, ${Object.keys(backup.recurring).length} recurring rules and your settings were saved. Receipt photos are not included.`);
+      }
+    } catch (error) {
+      setLoading(false);
+      showModal('Backup Failed', `Could not create the backup: ${(error as Error).message}`);
+    }
+  };
 
-    const url = URL.createObjectURL(file);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', fileName);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-    showModal('Backup Successful', `${allExpenses.length} expenses downloaded as CSV.`);
+  const restoreFullBackup = () => {
+    if (!db || !user) return;
+    pickTextFile('.json,application/json', (text) => {
+      let backup: unknown;
+      try {
+        backup = JSON.parse(text);
+      } catch {
+        showModal('Restore Failed', 'The selected file is not a valid backup file.');
+        return;
+      }
+      showModal(
+        'Restore Full Backup',
+        'This restores expenses, recurring rules and settings from the file. Records with the same id are overwritten with the backup version. Nothing is deleted.',
+        true,
+        async () => {
+          try {
+            setLoading(true);
+            const counts = await restoreUserBackup(db, user.uid, backup, expenses);
+            showModal('Restore Complete', `${counts.expenses} expenses and ${counts.recurring} recurring rules restored.`);
+          } catch (error) {
+            showModal('Restore Failed', (error as Error).message);
+          } finally {
+            setLoading(false);
+          }
+        }
+      );
+    }, () => showModal('Restore Failed', 'Could not read the file.'));
   };
 
   const exportToGoogleSheets = async () => {
@@ -582,46 +628,29 @@ const App = () => {
   };
 
   const parseCsvAndRestore = () => {
-    const fileInput = document.createElement('input');
-    fileInput.type = 'file';
-    fileInput.accept = '.csv';
-    fileInput.style.display = 'none';
+    pickTextFile('.csv', (csvContent) => {
+      try {
+        const parsedData = parseCsv(csvContent);
 
-    fileInput.onchange = (e) => {
-      const target = e.target as HTMLInputElement;
-      const file = target.files?.[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        try {
-          const csvContent = event.target?.result as string;
-          const parsedData = parseCsv(csvContent);
-
-          if (parsedData.length === 0) {
-            showModal('Restore Failed', 'The selected file contained no valid expense records.');
-            setRestoredData(null);
-            return;
-          }
-
-          setRestoredData(parsedData);
-          showModal('Backup Loaded', `${parsedData.length} records loaded from CSV. Go to Settings > Cloud & Data Sync to import them.`);
-          setView('settings');
-
-        } catch (error: any) {
-          console.error("CSV Parsing Error:", error);
-          showModal('Restore Failed', `Error parsing CSV: ${error.message}`);
+        if (parsedData.length === 0) {
+          showModal('Restore Failed', 'The selected file contained no valid expense records.');
           setRestoredData(null);
+          return;
         }
-      };
-      reader.onerror = () => {
-        showModal('Restore Failed', 'Could not read the file.');
-        setRestoredData(null);
-      };
-      reader.readAsText(file);
-    };
 
-    fileInput.click();
+        setRestoredData(parsedData);
+        showModal('Backup Loaded', `${parsedData.length} records loaded from CSV. Go to Settings > Cloud & Data Sync to import them.`);
+        setView('settings');
+
+      } catch (error: any) {
+        console.error("CSV Parsing Error:", error);
+        showModal('Restore Failed', `Error parsing CSV: ${error.message}`);
+        setRestoredData(null);
+      }
+    }, () => {
+      showModal('Restore Failed', 'Could not read the file.');
+      setRestoredData(null);
+    });
   };
 
   const handleDeleteAllData = async () => {
@@ -847,6 +876,7 @@ const App = () => {
           )}
 
           {view === 'stats' && (
+            <Suspense fallback={<LoadingSpinner size="lg" className="text-indigo-600 mx-auto mt-12" />}>
             <StatsView
               filterYear={filterYear}
               setFilterYear={setFilterYear}
@@ -872,6 +902,7 @@ const App = () => {
               trips={trips}
               onViewReceipt={handleViewReceipt}
             />
+            </Suspense>
           )}
 
           {view === 'settings' && (
@@ -891,6 +922,8 @@ const App = () => {
               allExpenses={allExpenses}
               downloadCsv={downloadCsv}
               parseCsvAndRestore={parseCsvAndRestore}
+              downloadFullBackup={downloadFullBackup}
+              restoreFullBackup={restoreFullBackup}
               restoredData={restoredData}
               syncRestoredCsvToFirebase={syncRestoredCsvToFirebase}
               setRestoredData={setRestoredData}

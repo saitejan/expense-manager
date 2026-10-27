@@ -5,6 +5,7 @@ import { getDueMonths, dueDay, MAX_CATCH_UP_MONTHS } from '../src/utils/recurrin
 import { pushIdTime, findPossibleDuplicate, merchantKey, applyMerchantAliases, learnMerchantAliases } from '../src/utils/transactions.ts';
 import type { ParsedTransaction } from '../src/types/gmail.ts';
 import { findTripIdForDate } from '../src/utils/trips.ts';
+import { convertToCsv, parseCsv } from '../src/services/csv/index.ts';
 import type { Expense } from '../src/types/index.ts';
 
 // Quick entry
@@ -88,5 +89,19 @@ assert.deepEqual(learnMerchantAliases([sms('Shanthi', 'Maid salary', 'Wife')], a
 const trips = { goa: { name: 'Goa', startDate: '2026-12-10', endDate: '2026-12-15', currency: 'INR' } };
 assert.equal(findTripIdForDate(trips, '2026-12-15'), 'goa');
 assert.equal(findTripIdForDate(trips, '2026-12-16'), '');
+
+// CSV backup round trip: quotes, commas and line breaks survive; income and trip kept
+const csvRows = [
+  { ...at('2026-10-20T10:00:00Z', 'line one\nline two', 'Food'), id: '-Nab1' },
+  { ...at('2026-10-21T10:00:00Z', 'say "hi", then pay', 'Kids, school'), id: '-Nab2' },
+  { ...at('2026-10-22T10:00:00Z', 'Salary', 'Other', 90000, 'credit'), id: 'gmail-abc', tripId: 'goa' },
+];
+for (const csv of [convertToCsv(csvRows), convertToCsv(csvRows).replace(/\n(?!line two)/g, '\r\n')]) {
+  const back = parseCsv(csv);
+  assert.deepEqual(back.map(e => [e.id, e.description, e.tag, e.type, e.tripId, e.timestamp.getTime()]),
+    csvRows.map(e => [e.id, e.description, e.tag, e.type, e.tripId, e.timestamp.getTime()]));
+}
+// Backups made before the parser change still load
+assert.equal(parseCsv('id,userId,amount,currency,amountINR,amountUSD,description,tag,timestamp,dateStr,timeStr,syncStatus\na,u,5,INR,5,0.06,"a ""b"", c",Food,2026-10-20T10:00:00.000Z,2026-10-20,10:00,synced')[0].description, 'a "b", c');
 
 console.log('selfcheck ok');

@@ -11,6 +11,8 @@ export {
     deleteExpenseFromFirebase,
     syncPendingExpensesToFirebase,
     syncRestoredCsvToFirebase,
+    exportUserBackup,
+    restoreUserBackup,
     subscribeToExpenses,
     deleteAllExpensesFromFirebase,
     migrateExpensesToDefaultCurrency,
